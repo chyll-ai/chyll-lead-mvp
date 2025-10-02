@@ -1019,6 +1019,7 @@ def simple_similarity(text1: str, text2: str) -> float:
 
 def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     """Enhanced feature engineering for smart scoring"""
+    print(f"[DEBUG featurize_simple] Entry - df shape: {df.shape}")
     df = df.copy()
     
     # Ensure required columns exist with safe defaults
@@ -1038,35 +1039,45 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = default_val
         else:
             # Handle NaN values safely
-            if df[col].dtype == 'object':
-                df[col] = df[col].fillna(default_val if isinstance(default_val, str) else "")
-            else:
-                df[col] = df[col].fillna(default_val)
+            try:
+                if df[col].dtype == 'object':
+                    df[col] = df[col].fillna(value=default_val if isinstance(default_val, str) else "", inplace=False)
+                else:
+                    df[col] = df[col].fillna(value=default_val, inplace=False)
+            except Exception as e:
+                print(f"[ERROR] fillna failed for column {col}: {e}")
+                raise
     
     # Basic features with safe type conversion
-    df["siren"] = df["siren"].fillna("").astype(str)
+    print(f"[DEBUG featurize_simple] Before siren fillna")
+    df["siren"] = df["siren"].fillna(value="", inplace=False).astype(str)
     df["has_siren"] = df["siren"].str.replace(r"\D","",regex=True).str.len().ge(9).astype(int)
     df["created_year"] = pd.to_numeric(df["created_year"], errors="coerce")
     df["age_years"] = np.where(df["created_year"].notna(), pd.Timestamp.now().year - df["created_year"], np.nan)
     
     # Enhanced features for smart scoring with safe string handling
-    df["ape"] = df["ape"].fillna("").astype(str)
+    print(f"[DEBUG featurize_simple] Before ape fillna")
+    df["ape"] = df["ape"].fillna(value="", inplace=False).astype(str)
     df["ape_category"] = df["ape"].str[:2]
-    df["industry_score"] = df["ape_category"].map(get_industry_score)
+    df["industry_score"] = df["ape_category"].map(get_industry_score).fillna(value=0.3, inplace=False)
     
     # Geographic intelligence from postal codes and cities
-    df["postal_code"] = df["postal_code"].fillna("").astype(str)
-    df["city"] = df["city"].fillna("").astype(str)
+    print(f"[DEBUG featurize_simple] Before postal_code fillna")
+    df["postal_code"] = df["postal_code"].fillna(value="", inplace=False).astype(str)
+    df["city"] = df["city"].fillna(value="", inplace=False).astype(str)
     df["region"] = df["postal_code"].apply(extract_region_from_postal_code)
-    df["region_score"] = df["region"].map(get_region_score)
+    print(f"[DEBUG featurize_simple] Before region_score fillna")
+    df["region_score"] = df["region"].map(get_region_score).fillna(value=0.3, inplace=False)
     df["city_score"] = df.apply(lambda row: get_city_score(row.get("city", ""), row.get("postal_code", "")), axis=1)
     
     # Use the higher of region or city score for geographic intelligence
     df["geographic_score"] = df[["region_score", "city_score"]].max(axis=1)
     
     # Safe age categorization
+    print(f"[DEBUG featurize_simple] Before age_category cut")
     df["age_category"] = pd.cut(df["age_years"], bins=[0, 2, 5, 10, 100], labels=["startup", "growth", "mature", "established"])
-    df["maturity_score"] = df["age_category"].map({"startup": 0.3, "growth": 0.8, "mature": 0.9, "established": 0.7})
+    print(f"[DEBUG featurize_simple] Before maturity_score fillna")
+    df["maturity_score"] = df["age_category"].map({"startup": 0.3, "growth": 0.8, "mature": 0.9, "established": 0.7}).fillna(value=0.3, inplace=False)
     
     # Safe data quality calculation
     df["data_quality"] = (
@@ -1090,7 +1101,9 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     df["business_district_score"] = df.apply(lambda row: get_business_district_score(row), axis=1)
     
     # 100 Data Points System - Comprehensive Analysis
+    print(f"[DEBUG featurize_simple] Before add_comprehensive_data_points")
     df = add_comprehensive_data_points(df)
+    print(f"[DEBUG featurize_simple] After add_comprehensive_data_points")
     
     return df
 
@@ -1347,7 +1360,9 @@ def train(req: TrainRequest):
             return {"ok": False, "error": "no rows"}
         
         # Comprehensive feature engineering with 110 data points
+        print(f"[DEBUG] Before featurize_simple - df shape: {df.shape}, columns: {list(df.columns)}")
         df = featurize_simple(df)
+        print(f"[DEBUG] After featurize_simple - df shape: {df.shape}")
         
         # Extract patterns from won deals using 110 data points
         won_deals = df[df["deal_status"].str.lower() == "won"].copy()
