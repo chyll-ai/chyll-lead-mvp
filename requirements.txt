@@ -6,7 +6,7 @@ pydantic==2.5.0
 python-dotenv==1.0.0
 
 # Essential data processing (lightweight)
-pandas==2.1.4
+pandas==2.0.3
 numpy==1.24.4
 
 # Minimal ML (only sklearn for basic classification)
