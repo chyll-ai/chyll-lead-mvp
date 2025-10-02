@@ -58,3 +58,4 @@ coverage/
 *.joblib
 *.h5
 *.model
+.vercel
