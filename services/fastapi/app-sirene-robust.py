@@ -189,12 +189,59 @@ def simple_similarity(text1: str, text2: str) -> float:
         return 0.0
 
 def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
-    """Simple feature engineering"""
+    """Enhanced feature engineering for smart scoring"""
     df = df.copy()
+    
+    # Basic features
     df["has_siren"] = df.get("siren","").astype(str).str.replace(r"\D","",regex=True).str.len().ge(9).astype(int)
     df["created_year"] = pd.to_numeric(df.get("created_year", np.nan), errors="coerce")
     df["age_years"] = np.where(df["created_year"].notna(), pd.Timestamp.now().year - df["created_year"], np.nan)
+    
+    # Enhanced features for smart scoring
+    df["ape_category"] = df.get("ape", "").str[:2].astype(str)
+    df["industry_score"] = df["ape_category"].map(get_industry_score)
+    df["region_score"] = df.get("region", "").map(get_region_score)
+    df["age_category"] = pd.cut(df["age_years"], bins=[0, 2, 5, 10, 100], labels=["startup", "growth", "mature", "established"])
+    df["maturity_score"] = df["age_category"].map({"startup": 0.3, "growth": 0.8, "mature": 0.9, "established": 0.7})
+    df["data_quality"] = (df["has_siren"].astype(int) + 
+                         df["ape"].notna().astype(int) + 
+                         df["region"].notna().astype(int)) / 3.0
+    
     return df
+
+def get_industry_score(ape_category: str) -> float:
+    """Industry-specific scoring based on APE codes"""
+    industry_scores = {
+        "62": 0.9,  # Computer programming
+        "63": 0.8,  # Information service activities
+        "70": 0.8,  # Activities of head offices; management consultancy
+        "71": 0.7,  # Architectural and engineering activities
+        "72": 0.7,  # Scientific research and development
+        "85": 0.6,  # Education
+        "46": 0.6,  # Wholesale trade
+        "47": 0.5,  # Retail trade
+        "68": 0.5,  # Real estate activities
+        "41": 0.4,  # Construction
+        "10": 0.3,  # Manufacture of food products
+        "20": 0.3,  # Manufacture of chemicals
+    }
+    return industry_scores.get(ape_category, 0.4)  # Default score for unknown industries
+
+def get_region_score(region: str) -> float:
+    """Geographic scoring based on regions"""
+    region_scores = {
+        "11": 0.9,  # Île-de-France
+        "75": 0.9,  # Paris
+        "92": 0.8,  # Hauts-de-Seine
+        "93": 0.7,  # Seine-Saint-Denis
+        "94": 0.7,  # Val-de-Marne
+        "69": 0.7,  # Rhône (Lyon)
+        "13": 0.6,  # Bouches-du-Rhône (Marseille)
+        "31": 0.6,  # Haute-Garonne (Toulouse)
+        "59": 0.6,  # Nord (Lille)
+        "44": 0.5,  # Loire-Atlantique (Nantes)
+    }
+    return region_scores.get(region, 0.4)  # Default score for other regions
 
 # ---- Routes
 @app.get("/health")
@@ -268,16 +315,32 @@ def train(req: TrainRequest):
                         similarities = [simple_similarity(current_text, hist_text) for hist_text in artifacts["hist_texts"]]
                         avg_similarity = np.mean(similarities) if similarities else 0.0
                         
+                        # Enhanced smart scoring algorithm
                         if clf and SKLEARN_AVAILABLE:
                             Xtab = pd.DataFrame([{
                                 "has_siren": int(df_sample.iloc[i]["has_siren"]),
                                 "age_years": float(df_sample.iloc[i]["age_years"]) if pd.notna(df_sample.iloc[i]["age_years"]) else -1.0,
                             }]).fillna(0)
-                            p = float(clf.predict_proba(Xtab)[0][1])
+                            base_score = float(clf.predict_proba(Xtab)[0][1])
                         else:
-                            p = 0.5 + avg_similarity * 0.3
+                            base_score = 0.5 + avg_similarity * 0.3
                         
-                        p = min(0.95, p + avg_similarity * 0.1)
+                        # Apply smart multipliers
+                        industry_multiplier = df_sample.iloc[i].get("industry_score", 0.5)
+                        region_multiplier = df_sample.iloc[i].get("region_score", 0.5)
+                        maturity_multiplier = df_sample.iloc[i].get("maturity_score", 0.5)
+                        data_quality_multiplier = df_sample.iloc[i].get("data_quality", 0.5)
+                        
+                        # Calculate enhanced score
+                        p = base_score * (
+                            0.4 * industry_multiplier + 
+                            0.2 * region_multiplier + 
+                            0.2 * maturity_multiplier + 
+                            0.2 * data_quality_multiplier
+                        )
+                        
+                        # Add similarity boost
+                        p = min(0.95, p + avg_similarity * 0.15)
                         band = "High" if p>=0.75 else ("Medium" if p>=0.5 else "Low")
                         
                         # Generate reasons for scoring
@@ -307,9 +370,14 @@ def train(req: TrainRequest):
                             "similarity_score": round(avg_similarity, 3)
                         })
                     
+                    # Quality filtering - only high-scoring leads
+                    high_quality_leads = [c for c in scored_companies if c["win_score"] >= 0.65]
+                    
                     # Sort by win score and take top results
-                    scored_companies.sort(key=lambda x: x["win_score"], reverse=True)
-                    discovered_leads = scored_companies[:10]  # Show top 10 instead of 5
+                    high_quality_leads.sort(key=lambda x: x["win_score"], reverse=True)
+                    discovered_leads = high_quality_leads[:8]  # Show top 8 high-quality leads
+                    
+                    print(f"Filtered {len(scored_companies)} companies to {len(high_quality_leads)} high-quality leads")
                     print(f"Selected top {len(discovered_leads)} companies with scores {[c['win_score'] for c in discovered_leads[:3]]}")
                     
         except Exception as e:
