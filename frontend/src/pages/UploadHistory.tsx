@@ -154,64 +154,158 @@ const UploadHistory: React.FC = () => {
                   <table className="min-w-full divide-y divide-gray-700">
                     <thead className="bg-gray-800">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Company</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">SIREN</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">APE</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Location</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Legal Form</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Size</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Category</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Active</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Score</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Band</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Why</th>
+                        {/* Basic Info */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Company</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">SIREN</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">SIRET</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">APE</th>
+                        
+                        {/* Names */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Official Name</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Usual Name</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Acronym</th>
+                        
+                        {/* Location */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Postal Code</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">City</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Street</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Street Number</th>
+                        
+                        {/* Business Info */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Legal Form</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Activity</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Category</th>
+                        
+                        {/* Size & Employees */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Employee Range</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Employee Year</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Size Label</th>
+                        
+                        {/* Status */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Admin Status</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Employer</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Head Office</th>
+                        
+                        {/* Dates */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Creation Date</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Last Update</th>
+                        
+                        {/* Special Status */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Social Economy</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Mission Company</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Association ID</th>
+                        
+                        {/* Coordinates */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">X Coord</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Y Coord</th>
+                        
+                        {/* Scoring */}
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Score</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Band</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Why</th>
                       </tr>
                     </thead>
                     <tbody className="bg-gray-900 divide-y divide-gray-700">
                       {discoveredLeads.map((lead, i) => (
                         <tr key={i} className="hover:bg-gray-800">
-                          <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-white">
-                            <div className="max-w-xs truncate" title={lead.name}>
-                              {lead.name}
+                          {/* Basic Info */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs font-medium text-white">
+                            <div className="max-w-24 truncate" title={lead.name || lead.denominationUniteLegale || 'N/A'}>
+                              {lead.name || lead.denominationUniteLegale || 'N/A'}
                             </div>
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300 font-mono">{lead.siren}</td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300 font-mono">{lead.ape}</td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                            {lead.location || 'N/A'}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300 font-mono">{lead.siren || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300 font-mono">{lead.siret || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300 font-mono">{lead.ape || 'N/A'}</td>
+                          
+                          {/* Names */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
+                            <div className="max-w-24 truncate" title={lead.denominationUniteLegale || 'N/A'}>
+                              {lead.denominationUniteLegale || 'N/A'}
+                            </div>
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                            {lead.categorieJuridiqueUniteLegale || 'N/A'}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
+                            <div className="max-w-24 truncate" title={lead.denominationUsuelle1UniteLegale || 'N/A'}>
+                              {lead.denominationUsuelle1UniteLegale || 'N/A'}
+                            </div>
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                            {lead.headcountLabelUL || lead.trancheEffectifsUniteLegale || 'N/A'}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
+                            <div className="max-w-16 truncate" title={lead.sigleUniteLegale || 'N/A'}>
+                              {lead.sigleUniteLegale || 'N/A'}
+                            </div>
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                            {lead.companySizeLabel || lead.categorieEntreprise || 'N/A'}
+                          
+                          {/* Location */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300 font-mono">{lead.postal_code || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
+                            <div className="max-w-20 truncate" title={lead.city || 'N/A'}>
+                              {lead.city || 'N/A'}
+                            </div>
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              lead.isActive ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'
-                            }`}>
-                              {lead.isActive ? 'Active' : 'Inactive'}
-                            </span>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
+                            <div className="max-w-20 truncate" title={lead.libelleVoieEtablissement || 'N/A'}>
+                              {lead.libelleVoieEtablissement || 'N/A'}
+                            </div>
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-white font-medium">
-                            {typeof lead.win_score === 'number' ? lead.win_score.toFixed(3) : lead.win_score}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.numeroVoieEtablissement || 'N/A'}</td>
+                          
+                          {/* Business Info */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
+                            <div className="max-w-20 truncate" title={lead.categorieJuridiqueUniteLegale || 'N/A'}>
+                              {lead.categorieJuridiqueUniteLegale || 'N/A'}
+                            </div>
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300 font-mono">{lead.activitePrincipaleUniteLegale || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
+                            <div className="max-w-20 truncate" title={lead.categorieEntreprise || 'N/A'}>
+                              {lead.categorieEntreprise || 'N/A'}
+                            </div>
+                          </td>
+                          
+                          {/* Size & Employees */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.trancheEffectifsUniteLegale || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.anneeEffectifsUniteLegale || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
+                            <div className="max-w-20 truncate" title={lead.companySizeLabel || 'N/A'}>
+                              {lead.companySizeLabel || 'N/A'}
+                            </div>
+                          </td>
+                          
+                          {/* Status */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.etatAdministratifUniteLegale || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.caractereEmployeurUniteLegale || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.etablissementSiege ? 'Yes' : 'No'}</td>
+                          
+                          {/* Dates */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.dateCreationUniteLegale || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.dateDernierTraitementUniteLegale || 'N/A'}</td>
+                          
+                          {/* Special Status */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.economieSocialeSolidaireUniteLegale || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.societeMissionUniteLegale || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300 font-mono">{lead.identifiantAssociationUniteLegale || 'N/A'}</td>
+                          
+                          {/* Coordinates */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.coordonneeLambertAbscisseEtablissement || 'N/A'}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.coordonneeLambertOrdonneeEtablissement || 'N/A'}</td>
+                          
+                          {/* Scoring */}
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-white font-medium">
+                            {typeof lead.win_score === 'number' ? lead.win_score.toFixed(3) : lead.win_score || 'N/A'}
+                          </td>
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            <span className={`inline-flex px-1 py-0.5 text-xs font-semibold rounded-full ${
                               lead.band === 'High' ? 'bg-green-800 text-green-200' :
                               lead.band === 'Medium' ? 'bg-yellow-800 text-yellow-200' :
                               'bg-red-800 text-red-200'
                             }`}>
-                              {lead.band}
+                              {lead.band || 'N/A'}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-sm text-gray-300 max-w-xs">
+                          <td className="px-2 py-2 text-xs text-gray-300 max-w-32">
                             <div className="flex flex-wrap gap-1">
-                              {(lead.reasons || []).slice(0, 2).map((reason: string, idx: number) => (
-                                <span key={idx} className="inline-flex px-2 py-1 text-xs bg-gray-700 text-gray-200 rounded">
+                              {(lead.reasons || []).slice(0, 1).map((reason: string, idx: number) => (
+                                <span key={idx} className="inline-flex px-1 py-0.5 text-xs bg-gray-700 text-gray-200 rounded">
                                   {reason}
                                 </span>
                               ))}
