@@ -379,23 +379,234 @@ def health():
         "httpx_available": HTTPX_AVAILABLE
     }
 
+async def enrich_user_data_with_sirene(df: pd.DataFrame) -> pd.DataFrame:
+    """Enrich user data with SIRENE information"""
+    print(f"[DEBUG] Enriching {len(df)} companies with SIRENE data...")
+    
+    enriched_rows = []
+    for _, row in df.iterrows():
+        company_name = row.get('company_name', '')
+        siren = row.get('siren', '')
+        
+        # Try to find company in SIRENE
+        sirene_data = None
+        if siren:
+            # Search by SIREN
+            sirene_data = await search_sirene_by_siren(siren)
+        elif company_name:
+            # Search by company name
+            sirene_data = await search_sirene_by_name(company_name)
+        
+        # Merge user data with SIRENE data
+        enriched_row = row.to_dict()
+        if sirene_data:
+            enriched_row.update(sirene_data)
+            print(f"[DEBUG] Enriched {company_name} with SIRENE data")
+        else:
+            print(f"[DEBUG] No SIRENE data found for {company_name}")
+        
+        enriched_rows.append(enriched_row)
+    
+    enriched_df = pd.DataFrame(enriched_rows)
+    print(f"[DEBUG] Enriched dataset shape: {enriched_df.shape}")
+    return enriched_df
+
+async def search_sirene_by_siren(siren: str) -> dict:
+    """Search SIRENE by SIREN number"""
+    if not SIRENE_TOKEN or not siren:
+        return {}
+    
+    try:
+        query = f"siren:{siren}"
+        params = {
+            "q": query,
+            "nombre": 1,
+            "debut": 1
+        }
+        
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "X-INSEE-Api-Key-Integration": SIRENE_TOKEN,
+                "Accept": "application/json"
+            }
+            
+            response = await client.get(f"{SIRENE_BASE_URL}/siret", headers=headers, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                etablissements = data.get('etablissements', [])
+                if etablissements:
+                    return extract_sirene_data(etablissements[0])
+    except Exception as e:
+        print(f"[ERROR] SIRENE search by SIREN failed: {e}")
+    
+    return {}
+
+async def search_sirene_by_name(company_name: str) -> dict:
+    """Search SIRENE by company name"""
+    if not SIRENE_TOKEN or not company_name:
+        return {}
+    
+    try:
+        # Clean company name for search
+        clean_name = company_name.replace("'", " ").replace("-", " ").strip()
+        query = f'denominationUniteLegale:"{clean_name}"'
+        params = {
+            "q": query,
+            "nombre": 1,
+            "debut": 1
+        }
+        
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "X-INSEE-Api-Key-Integration": SIRENE_TOKEN,
+                "Accept": "application/json"
+            }
+            
+            response = await client.get(f"{SIRENE_BASE_URL}/siret", headers=headers, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                etablissements = data.get('etablissements', [])
+                if etablissements:
+                    return extract_sirene_data(etablissements[0])
+    except Exception as e:
+        print(f"[ERROR] SIRENE search by name failed: {e}")
+    
+    return {}
+
+def extract_sirene_data(etablissement: dict) -> dict:
+    """Extract SIRENE data from etablissement response"""
+    unite_legale = etablissement.get('uniteLegale', {})
+    adresse = etablissement.get('adresseEtablissement', {})
+    
+    return {
+        'siren': etablissement.get('siren', ''),
+        'siret': etablissement.get('siret', ''),
+        'company_name': unite_legale.get('denominationUniteLegale') or 
+                       unite_legale.get('denominationUsuelle1UniteLegale') or 
+                       unite_legale.get('nomUniteLegale') or 
+                       unite_legale.get('sigleUniteLegale') or '',
+        'ape': unite_legale.get('activitePrincipaleUniteLegale', ''),
+        'legal_form': unite_legale.get('categorieJuridiqueUniteLegale', ''),
+        'postal_code': adresse.get('codePostalEtablissement', ''),
+        'city': adresse.get('libelleCommuneEtablissement', ''),
+        'employee_range': unite_legale.get('trancheEffectifsUniteLegale', ''),
+        'created_year': int(unite_legale.get('dateCreationUniteLegale', '0')[:4]) if unite_legale.get('dateCreationUniteLegale') else None,
+        'is_active': unite_legale.get('etatAdministratifUniteLegale') == 'A',
+        'company_category': unite_legale.get('categorieEntreprise', ''),
+        'social_economy': unite_legale.get('economieSocialeSolidaireUniteLegale', ''),
+        'mission_company': unite_legale.get('societeMissionUniteLegale', ''),
+        'is_employer': unite_legale.get('caractereEmployeurUniteLegale', ''),
+        'nomenclature_activity': unite_legale.get('nomenclatureActivitePrincipaleUniteLegale', ''),
+        'headquarters_nic': unite_legale.get('nicSiegeUniteLegale', ''),
+        'legal_unit_creation_date': unite_legale.get('dateCreationUniteLegale', ''),
+        'legal_unit_employees_year': unite_legale.get('anneeEffectifsUniteLegale', ''),
+        'company_category_year': unite_legale.get('anneeCategorieEntreprise', ''),
+        'legal_unit_diffusion_status': unite_legale.get('statutDiffusionUniteLegale', ''),
+        'last_processing_date': unite_legale.get('dateDernierTraitementUniteLegale', ''),
+        'establishment_creation_date': etablissement.get('dateCreationEtablissement', ''),
+        'establishment_employees': etablissement.get('trancheEffectifsEtablissement', ''),
+        'establishment_activity': etablissement.get('activitePrincipaleRegistreMetiersEtablissement', ''),
+        'is_headquarters': etablissement.get('etablissementSiege', False),
+        'nic': etablissement.get('nic', ''),
+        'diffusion_status': etablissement.get('statutDiffusionEtablissement', ''),
+        'establishment_last_processing_date': etablissement.get('dateDernierTraitementEtablissement', ''),
+        'periods_count': etablissement.get('nombrePeriodesEtablissement', 0)
+    }
+
+async def find_similar_companies(patterns: dict, limit: int = 50) -> pd.DataFrame:
+    """Find similar companies in SIRENE based on learned patterns"""
+    print(f"[DEBUG] Finding similar companies based on patterns...")
+    
+    # Build filters for similar companies
+    pos_patterns = patterns.get('positive_patterns', {})
+    neg_patterns = patterns.get('negative_patterns', {})
+    
+    # Get top positive patterns
+    top_ape_codes = sorted(pos_patterns.get('ape_distribution', {}).items(), key=lambda x: x[1], reverse=True)[:3]
+    top_regions = sorted(pos_patterns.get('region_distribution', {}).items(), key=lambda x: x[1], reverse=True)[:3]
+    
+    similar_companies = []
+    
+    # Search for companies with similar APE codes
+    for ape_code, freq in top_ape_codes:
+        if freq > 0.1:  # Only if significant
+            filters = {
+                'etatAdministratifUniteLegale': 'A',
+                'ape': [ape_code]
+            }
+            companies = await fetch_sirene_companies(filters, limit=limit//len(top_ape_codes))
+            for company in companies:
+                company['similarity_reason'] = f"Similar APE code {ape_code}"
+                similar_companies.append(company)
+    
+    # Search for companies in similar regions
+    for region, freq in top_regions:
+        if freq > 0.1:  # Only if significant
+            filters = {
+                'etatAdministratifUniteLegale': 'A',
+                'postal_code': [region]
+            }
+            companies = await fetch_sirene_companies(filters, limit=limit//len(top_regions))
+            for company in companies:
+                company['similarity_reason'] = f"Similar region {region}"
+                similar_companies.append(company)
+    
+    # Remove duplicates and convert to DataFrame
+    unique_companies = []
+    seen_sirens = set()
+    for company in similar_companies:
+        siren = company.get('siren', '')
+        if siren and siren not in seen_sirens:
+            seen_sirens.add(siren)
+            unique_companies.append(company)
+    
+    similar_df = pd.DataFrame(unique_companies)
+    print(f"[DEBUG] Found {len(similar_df)} similar companies")
+    return similar_df
+
 @app.post("/train")
 async def train(req: TrainRequest):
-    """Learn patterns from user's training data"""
+    """Enhanced training with SIRENE enrichment and similarity expansion"""
     try:
-        print(f"[DEBUG] Training with {len(req.rows)} rows")
+        print(f"[DEBUG] Enhanced training with {len(req.rows)} rows")
         
         # Convert to DataFrame
         df = pd.DataFrame([r.model_dump() for r in req.rows])
+        print(f"[DEBUG] Original DataFrame shape: {df.shape}")
         
         if df.empty:
             return {"ok": False, "error": "no rows"}
         
-        # Analyze patterns from user data
-        patterns = analyze_user_patterns(df)
+        # Step 1: Enrich user data with SIRENE information
+        enriched_df = await enrich_user_data_with_sirene(df)
+        
+        # Step 2: Analyze patterns from enriched data
+        patterns = analyze_user_patterns(enriched_df)
+        print(f"[DEBUG] Patterns extracted from enriched data")
+        
+        # Step 3: Find similar companies based on patterns
+        similar_df = await find_similar_companies(patterns, limit=100)
+        
+        # Step 4: Combine original + enriched + similar data
+        # Add similarity labels to similar companies
+        if len(similar_df) > 0:
+            # For similar companies, we'll use the pattern analysis to determine if they should be positive or negative
+            # This is a simplified approach - in practice, you might want more sophisticated similarity scoring
+            similar_df['deal_status'] = 'similar'  # Mark as similar for now
+        
+        # Step 5: Re-analyze patterns on the expanded dataset
+        if len(similar_df) > 0:
+            # Combine enriched data with similar companies
+            combined_df = pd.concat([enriched_df, similar_df], ignore_index=True)
+            print(f"[DEBUG] Combined dataset shape: {combined_df.shape}")
+            
+            # Re-analyze patterns on the expanded dataset
+            final_patterns = analyze_user_patterns(combined_df)
+        else:
+            final_patterns = patterns
         
         # Store patterns for this tenant
-        LEARNED_PATTERNS[req.tenant_id] = patterns
+        LEARNED_PATTERNS[req.tenant_id] = final_patterns
         
         # Automatically discover companies using the learned patterns
         print(f"[DEBUG] Auto-discovering companies after training...")
