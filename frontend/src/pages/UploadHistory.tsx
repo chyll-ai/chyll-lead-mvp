@@ -52,7 +52,11 @@ const UploadHistory: React.FC = () => {
     setShowLeads(false);
     
     try {
-      const res = await postEdge("/discover", { tenant_id: "dev-tenant", limit: 20 });
+      const res = await postEdge("/discover", { 
+        tenant_id: "dev-tenant", 
+        filters: {}, // Empty filters - backend will use learned patterns
+        limit: 20 
+      });
       console.log("Discovery response:", res);
       
       if (res.ok && res.companies && res.companies.length > 0) {
