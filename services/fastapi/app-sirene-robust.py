@@ -184,6 +184,53 @@ def sirene_query_from_filters(f: DiscoverFilters):
     # The SIRENE API query syntax seems to be different than expected
     return ""  # Empty query means get all companies, we'll filter in code
 
+def build_smart_sirene_query(historical_data: List[HistoryRow]) -> str:
+    """Build smart SIRENE query based on historical won deals"""
+    if not historical_data:
+        return "etatAdministratifUniteLegale:A"  # Just active companies
+    
+    # Extract patterns from won deals
+    won_deals = [row for row in historical_data if row.deal_status == "won"]
+    if not won_deals:
+        return "etatAdministratifUniteLegale:A"
+    
+    # Get APE codes from won deals
+    ape_codes = []
+    regions = []
+    
+    for deal in won_deals:
+        if hasattr(deal, 'ape') and deal.ape:
+            ape_codes.append(deal.ape)
+        if hasattr(deal, 'postal_code') and deal.postal_code:
+            # Extract region from postal code
+            postal_str = str(deal.postal_code).zfill(5)
+            first_two = postal_str[:2]
+            if first_two in ["75", "77", "78", "91", "92", "93", "94", "95"]:
+                regions.append("11")  # Île-de-France
+            elif first_two == "69":
+                regions.append("69")  # Rhône
+            elif first_two == "13":
+                regions.append("13")  # Bouches-du-Rhône
+    
+    # Build query
+    query_parts = ["etatAdministratifUniteLegale:A"]  # Active companies only
+    
+    # Add APE code filters (if we have them)
+    if ape_codes:
+        unique_apes = list(set(ape_codes))
+        if len(unique_apes) <= 3:  # Only if we have few APE codes
+            ape_query = " OR ".join([f"activitePrincipaleUniteLegale:{ape}" for ape in unique_apes])
+            query_parts.append(f"({ape_query})")
+    
+    # Add region filters (if we have them)
+    if regions:
+        unique_regions = list(set(regions))
+        if len(unique_regions) <= 2:  # Only if we have few regions
+            region_query = " OR ".join([f"codeRegion:{region}" for region in unique_regions])
+            query_parts.append(f"({region_query})")
+    
+    return " AND ".join(query_parts)
+
 def simple_similarity(text1: str, text2: str) -> float:
     """Simple text similarity based on common words"""
     try:
@@ -534,9 +581,13 @@ def train(req: TrainRequest):
         # Auto-discover leads after training for seamless UX
         discovered_leads = []
         try:
-            # Optimized for Railway free plan - get companies efficiently
+            # Smart SIRENE querying based on historical data
             if SIRENE_MODE == "api" and SIRENE_TOKEN:
-                companies = sirene_fetch_api("", rows=500, cap=500)  # Reduced to 500 for efficiency
+                # Build smart query based on won deals
+                smart_query = build_smart_sirene_query(req.rows)
+                print(f"Smart SIRENE query: {smart_query}")
+                
+                companies = sirene_fetch_api(smart_query, rows=500, cap=500)
                 if companies:
                     print(f"Fetched {len(companies)} companies from SIRENE")
                     
