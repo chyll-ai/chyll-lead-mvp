@@ -664,65 +664,65 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["age_stability"] = ((df["age_years"] >= 5) & (df["age_years"] <= 10)).astype(int)
     df["age_innovation"] = ((df["age_years"] >= 1) & (df["age_years"] <= 5)).astype(int)
     
-    # 51-60: Website Analysis (10 points) - Safe string operations
-    df["website_has_https"] = df["website"].astype(str).str.startswith("https://").astype(int)
-    df["website_has_www"] = df["website"].astype(str).str.contains("www.", na=False).astype(int)
-    df["website_is_com"] = df["website"].astype(str).str.endswith(".com").astype(int)
-    df["website_is_fr"] = df["website"].astype(str).str.endswith(".fr").astype(int)
-    df["website_domain_length"] = df["website"].astype(str).str.extract(r"://([^/]+)")[0].str.len().fillna(0)
-    df["website_has_subdomain"] = (df["website"].astype(str).str.count("\\.") > 2).astype(int)
-    df["website_has_tech_keywords"] = df["website"].astype(str).str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart", na=False).astype(int)
-    df["website_complexity"] = df["website"].astype(str).str.count("/")
-    df["website_has_port"] = df["website"].astype(str).str.contains(":\\d+", na=False).astype(int)
-    df["website_has_path"] = (df["website"].astype(str).str.count("/") > 2).astype(int)
+    # 51-60: SIREN Pattern Analysis (10 points) - Based on actual SIREN data
+    df["siren_sequence_pattern"] = df["siren"].astype(str).str[6:9].astype(int, errors="coerce").fillna(0)
+    df["siren_region_pattern"] = df["siren"].astype(str).str[2:4]
+    df["siren_department_pattern"] = df["siren"].astype(str).str[4:6]
+    df["siren_creation_pattern"] = df["siren"].astype(str).str[:2].astype(int, errors="coerce").fillna(0)
+    df["siren_parity_pattern"] = df["siren"].astype(str).str[-1].astype(int, errors="coerce").fillna(0) % 2
+    df["siren_leading_digits"] = df["siren"].astype(str).str[:3].astype(int, errors="coerce").fillna(0)
+    df["siren_middle_digits"] = df["siren"].astype(str).str[3:6].astype(int, errors="coerce").fillna(0)
+    df["siren_trailing_digits"] = df["siren"].astype(str).str[6:9].astype(int, errors="coerce").fillna(0)
+    df["siren_checksum_digit"] = df["siren"].astype(str).str[-1].astype(int, errors="coerce").fillna(0)
+    df["siren_validation_score"] = df["siren"].astype(str).apply(validate_siren_checksum)
     
-    # 61-70: Email Analysis (10 points) - Safe string operations
-    df["email_has_at"] = df["email"].astype(str).str.contains("@", na=False).astype(int)
-    df["email_has_dot"] = df["email"].astype(str).str.contains("\\.", na=False).astype(int)
-    df["email_is_contact"] = df["email"].astype(str).str.lower().str.startswith("contact@").astype(int)
-    df["email_is_info"] = df["email"].astype(str).str.lower().str.startswith("info@").astype(int)
-    df["email_is_hello"] = df["email"].astype(str).str.lower().str.startswith("hello@").astype(int)
-    df["email_is_ceo"] = df["email"].astype(str).str.lower().str.contains("ceo|director|manager", na=False).astype(int)
-    df["email_domain"] = df["email"].astype(str).str.extract(r"@([^@]+)")[0].fillna("")
-    df["email_domain_is_com"] = df["email_domain"].str.endswith(".com").astype(int)
-    df["email_domain_is_fr"] = df["email_domain"].str.endswith(".fr").astype(int)
-    df["email_length"] = df["email"].astype(str).str.len()
+    # 61-70: APE Code Deep Analysis (10 points) - Based on actual APE data
+    df["ape_tech_intensity"] = df["ape"].astype(str).str.startswith("62|63").astype(int)
+    df["ape_services_intensity"] = df["ape"].astype(str).str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
+    df["ape_manufacturing_intensity"] = df["ape"].astype(str).str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
+    df["ape_retail_intensity"] = df["ape"].astype(str).str.startswith("47|56").astype(int)
+    df["ape_construction_intensity"] = df["ape"].astype(str).str.startswith("41|42|43").astype(int)
+    df["ape_education_intensity"] = df["ape"].astype(str).str.startswith("85").astype(int)
+    df["ape_health_intensity"] = df["ape"].astype(str).str.startswith("86|87").astype(int)
+    df["ape_finance_intensity"] = df["ape"].astype(str).str.startswith("64|65|66").astype(int)
+    df["ape_transport_intensity"] = df["ape"].astype(str).str.startswith("49|50|51|52").astype(int)
+    df["ape_agriculture_intensity"] = df["ape"].astype(str).str.startswith("01|02|03").astype(int)
     
-    # 71-80: Business Intelligence (10 points) - Safe operations
-    df["is_active"] = df.get("active", True).astype(int)
-    df["has_complete_data"] = (df["company_name"].notna() & df["siren"].notna() & df["ape"].notna()).astype(int)
-    df["data_completeness"] = (df["company_name"].notna().astype(int) + df["siren"].notna().astype(int) + df["ape"].notna().astype(int) + df["postal_code"].notna().astype(int) + df["city"].notna().astype(int)) / 5
-    df["is_tech_company"] = (df["ape"].astype(str).str.startswith("62|63|70|71|72") | df["company_name"].astype(str).str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart", na=False)).astype(int)
-    df["is_services_company"] = df["ape"].astype(str).str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
-    df["is_manufacturing"] = df["ape"].astype(str).str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
-    df["is_b2b"] = df["ape"].astype(str).str.startswith("62|63|70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
-    df["is_b2c"] = df["ape"].astype(str).str.startswith("47|56|68|85|86|87|88|90|91|92|93|95|96").astype(int)
-    df["is_consulting"] = df["ape"].astype(str).str.startswith("70|71|72").astype(int)
-    df["is_software"] = df["ape"].astype(str).str.startswith("62|63").astype(int)
+    # 71-80: Geographic Intelligence (10 points) - Based on actual SIRENE data
+    df["is_paris_region"] = df["postal_code"].astype(str).str.startswith("75|77|78|91|92|93|94|95").astype(int)
+    df["is_lyon_region"] = df["postal_code"].astype(str).str.startswith("69").astype(int)
+    df["is_marseille_region"] = df["postal_code"].astype(str).str.startswith("13").astype(int)
+    df["is_toulouse_region"] = df["postal_code"].astype(str).str.startswith("31").astype(int)
+    df["is_nice_region"] = df["postal_code"].astype(str).str.startswith("06").astype(int)
+    df["is_nantes_region"] = df["postal_code"].astype(str).str.startswith("44").astype(int)
+    df["is_strasbourg_region"] = df["postal_code"].astype(str).str.startswith("67|68").astype(int)
+    df["is_montpellier_region"] = df["postal_code"].astype(str).str.startswith("34").astype(int)
+    df["is_bordeaux_region"] = df["postal_code"].astype(str).str.startswith("33").astype(int)
+    df["is_lille_region"] = df["postal_code"].astype(str).str.startswith("59").astype(int)
     
-    # 81-90: Market Position (10 points)
-    df["market_position_tech"] = df["is_tech_company"] * 0.8
-    df["market_position_services"] = df["is_services_company"] * 0.6
-    df["market_position_manufacturing"] = df["is_manufacturing"] * 0.4
-    df["market_position_consulting"] = df["is_consulting"] * 0.7
-    df["market_position_software"] = df["is_software"] * 0.9
-    df["market_position_b2b"] = df["is_b2b"] * 0.7
-    df["market_position_b2c"] = df["is_b2c"] * 0.5
-    df["market_position_established"] = df["age_is_established"] * 0.6
-    df["market_position_growth"] = df["age_is_growth"] * 0.8
-    df["market_position_innovation"] = df["age_innovation"] * 0.7
+    # 81-90: Company Name Intelligence (10 points) - Based on actual SIRENE data
+    df["name_has_sas"] = df["company_name"].astype(str).str.lower().str.contains("sas", na=False).astype(int)
+    df["name_has_sarl"] = df["company_name"].astype(str).str.lower().str.contains("sarl", na=False).astype(int)
+    df["name_has_sa"] = df["company_name"].astype(str).str.lower().str.contains(" sa ", na=False).astype(int)
+    df["name_has_snc"] = df["company_name"].astype(str).str.lower().str.contains("snc", na=False).astype(int)
+    df["name_has_sci"] = df["company_name"].astype(str).str.lower().str.contains("sci", na=False).astype(int)
+    df["name_has_eurl"] = df["company_name"].astype(str).str.lower().str.contains("eurl", na=False).astype(int)
+    df["name_has_sarlu"] = df["company_name"].astype(str).str.lower().str.contains("sarlu", na=False).astype(int)
+    df["name_has_sasu"] = df["company_name"].astype(str).str.lower().str.contains("sasu", na=False).astype(int)
+    df["name_has_snc"] = df["company_name"].astype(str).str.lower().str.contains("snc", na=False).astype(int)
+    df["name_has_auto_entrepreneur"] = df["company_name"].astype(str).str.lower().str.contains("auto-entrepreneur|auto entrepreneur", na=False).astype(int)
     
-    # 91-100: Composite Scores (10 points)
-    df["composite_tech_score"] = (df["is_tech_company"] * 0.4 + df["name_has_tech"] * 0.3 + df["website_has_tech_keywords"] * 0.3)
-    df["composite_professional_score"] = (df["email_is_contact"] * 0.3 + df["website_has_https"] * 0.3 + df["name_has_business"] * 0.4)
-    df["composite_location_score"] = (df["postal_code_is_paris"] * 0.4 + df["postal_code_is_lyon"] * 0.3 + df["postal_code_is_major_city"] * 0.3)
+    # 91-100: Composite Scores (10 points) - Based on actual SIRENE data
+    df["composite_tech_score"] = (df["ape_tech_intensity"] * 0.6 + df["name_has_tech"] * 0.4)
+    df["composite_geographic_score"] = (df["is_paris_region"] * 0.4 + df["is_lyon_region"] * 0.3 + df["is_marseille_region"] * 0.2 + df["is_toulouse_region"] * 0.1)
     df["composite_maturity_score"] = (df["age_sweet_spot"] * 0.4 + df["age_stability"] * 0.3 + df["age_innovation"] * 0.3)
-    df["composite_data_quality"] = (df["has_complete_data"] * 0.4 + df["data_completeness"] * 0.6)
-    df["composite_business_score"] = (df["is_b2b"] * 0.4 + df["is_consulting"] * 0.3 + df["is_software"] * 0.3)
-    df["composite_establishment_score"] = (df["siren_is_valid"] * 0.3 + df["age_is_mature"] * 0.3 + df["name_has_business"] * 0.4)
-    df["composite_innovation_score"] = (df["age_innovation"] * 0.4 + df["name_has_tech"] * 0.3 + df["is_tech_company"] * 0.3)
+    df["composite_data_quality"] = (df["siren_is_valid"] * 0.3 + df["ape_is_valid"] * 0.3 + df["postal_code_is_valid"] * 0.2 + df["has_complete_data"] * 0.2)
+    df["composite_business_score"] = (df["ape_services_intensity"] * 0.4 + df["ape_tech_intensity"] * 0.3 + df["name_has_sas"] * 0.3)
+    df["composite_establishment_score"] = (df["siren_is_valid"] * 0.3 + df["age_is_mature"] * 0.3 + df["name_has_sas"] * 0.4)
+    df["composite_innovation_score"] = (df["age_innovation"] * 0.4 + df["name_has_tech"] * 0.3 + df["ape_tech_intensity"] * 0.3)
     df["composite_stability_score"] = (df["age_stability"] * 0.4 + df["siren_is_valid"] * 0.3 + df["is_active"] * 0.3)
-    df["composite_growth_score"] = (df["age_is_growth"] * 0.4 + df["market_position_growth"] * 0.3 + df["age_sweet_spot"] * 0.3)
+    df["composite_growth_score"] = (df["age_is_growth"] * 0.4 + df["ape_tech_intensity"] * 0.3 + df["age_sweet_spot"] * 0.3)
+    df["composite_lead_score"] = (df["composite_tech_score"] * 0.2 + df["composite_geographic_score"] * 0.2 + df["composite_maturity_score"] * 0.2 + df["composite_business_score"] * 0.2 + df["composite_innovation_score"] * 0.2)
     
     return df
 
@@ -1196,7 +1196,7 @@ def train(req: TrainRequest):
                         geographic_intelligence_score = df_sample.iloc[i].get("geographic_intelligence", 0.3)
                         business_district_score = df_sample.iloc[i].get("business_district_score", 0.3)
                         
-                        # 100 Data Points Scoring System
+                        # 100 Data Points Scoring System - Based on actual SIRENE data
                         # Core ML and Business Intelligence (30%)
                         core_score = (
                             0.15 * ml_base_score +                    # ML prediction (15%)
@@ -1204,45 +1204,47 @@ def train(req: TrainRequest):
                             0.07 * deal_readiness_score               # Deal readiness (7%)
                         )
                         
-                        # Company Characteristics (25%)
+                        # Company Characteristics (25%) - Based on SIRENE data
                         company_score = (
                             0.06 * df_sample.iloc[i].get("composite_tech_score", 0.3) +
-                            0.05 * df_sample.iloc[i].get("composite_professional_score", 0.3) +
-                            0.04 * df_sample.iloc[i].get("composite_maturity_score", 0.3) +
+                            0.05 * df_sample.iloc[i].get("composite_maturity_score", 0.3) +
                             0.04 * df_sample.iloc[i].get("composite_establishment_score", 0.3) +
-                            0.03 * df_sample.iloc[i].get("composite_stability_score", 0.3) +
-                            0.03 * df_sample.iloc[i].get("composite_growth_score", 0.3)
+                            0.04 * df_sample.iloc[i].get("composite_stability_score", 0.3) +
+                            0.03 * df_sample.iloc[i].get("composite_growth_score", 0.3) +
+                            0.03 * df_sample.iloc[i].get("composite_innovation_score", 0.3)
                         )
                         
-                        # Market Position (20%)
-                        market_score = (
-                            0.05 * df_sample.iloc[i].get("market_position_tech", 0.3) +
-                            0.04 * df_sample.iloc[i].get("market_position_software", 0.3) +
-                            0.04 * df_sample.iloc[i].get("market_position_consulting", 0.3) +
-                            0.03 * df_sample.iloc[i].get("market_position_b2b", 0.3) +
-                            0.02 * df_sample.iloc[i].get("market_position_growth", 0.3) +
-                            0.02 * df_sample.iloc[i].get("market_position_innovation", 0.3)
+                        # Geographic Intelligence (20%) - Based on SIRENE data
+                        geographic_score = (
+                            0.05 * df_sample.iloc[i].get("composite_geographic_score", 0.3) +
+                            0.04 * df_sample.iloc[i].get("is_paris_region", 0) +
+                            0.03 * df_sample.iloc[i].get("is_lyon_region", 0) +
+                            0.03 * df_sample.iloc[i].get("is_marseille_region", 0) +
+                            0.02 * df_sample.iloc[i].get("is_toulouse_region", 0) +
+                            0.02 * df_sample.iloc[i].get("is_nice_region", 0) +
+                            0.01 * df_sample.iloc[i].get("is_nantes_region", 0)
                         )
                         
-                        # Geographic and Location (15%)
-                        location_score = (
-                            0.05 * df_sample.iloc[i].get("composite_location_score", 0.3) +
-                            0.04 * df_sample.iloc[i].get("postal_code_is_paris", 0) +
-                            0.03 * df_sample.iloc[i].get("postal_code_is_lyon", 0) +
-                            0.02 * df_sample.iloc[i].get("postal_code_is_major_city", 0) +
-                            0.01 * df_sample.iloc[i].get("city_is_capital", 0)
+                        # Business Intelligence (15%) - Based on SIRENE data
+                        business_score = (
+                            0.04 * df_sample.iloc[i].get("composite_business_score", 0.3) +
+                            0.03 * df_sample.iloc[i].get("ape_tech_intensity", 0) +
+                            0.03 * df_sample.iloc[i].get("ape_services_intensity", 0) +
+                            0.02 * df_sample.iloc[i].get("name_has_sas", 0) +
+                            0.02 * df_sample.iloc[i].get("name_has_sarl", 0) +
+                            0.01 * df_sample.iloc[i].get("name_has_sa", 0)
                         )
                         
-                        # Data Quality and Completeness (10%)
+                        # Data Quality and Completeness (10%) - Based on SIRENE data
                         quality_score = (
                             0.04 * df_sample.iloc[i].get("composite_data_quality", 0.3) +
-                            0.03 * df_sample.iloc[i].get("has_complete_data", 0) +
-                            0.02 * df_sample.iloc[i].get("siren_is_valid", 0) +
-                            0.01 * df_sample.iloc[i].get("ape_is_valid", 0)
+                            0.03 * df_sample.iloc[i].get("siren_is_valid", 0) +
+                            0.02 * df_sample.iloc[i].get("ape_is_valid", 0) +
+                            0.01 * df_sample.iloc[i].get("postal_code_is_valid", 0)
                         )
                         
                         # Final composite score
-                        p = core_score + company_score + market_score + location_score + quality_score
+                        p = core_score + company_score + geographic_score + business_score + quality_score
                         
                         # Apply realistic bounds (not too optimistic)
                         p = min(0.85, max(0.15, p))  # Cap at 85%, floor at 15%
