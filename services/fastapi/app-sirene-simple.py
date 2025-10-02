@@ -56,7 +56,7 @@ class TrainRequest(BaseModel):
 
 class DiscoverRequest(BaseModel):
     tenant_id: str
-    filters: Dict[str, Any]
+    filters: Dict[str, Any] = {}
     limit: int = 100
 
 class DiscoverResponse(BaseModel):
