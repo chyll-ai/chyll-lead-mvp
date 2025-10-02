@@ -832,11 +832,103 @@ async def discover(req: DiscoverRequest):
         scored_companies = []
         for company in companies:
             score = score_company(company, patterns)
-            company['lead_score'] = score
-            scored_companies.append(company)
+            
+            # Extract SIRENE data properly
+            siren = company.get("siren", "N/A")
+            ape = company.get("ape", "N/A")
+            region = company.get("region", "N/A")
+            location = company.get("location", "N/A")
+            
+            # Employee range mapping
+            headcount_codes = {
+                "00": "0",
+                "01": "1-2",
+                "02": "3-5", 
+                "03": "6-9",
+                "11": "10-19",
+                "12": "20-49",
+                "21": "50-99",
+                "22": "100-199",
+                "31": "200-249",
+                "32": "250-499",
+                "41": "500-999",
+                "42": "1 000-1 999",
+                "51": "2 000-4 999",
+                "52": "5 000-9 999",
+                "53": "10 000+"
+            }
+            
+            employee_range = company.get("employee_range", "")
+            headcount_label = headcount_codes.get(employee_range, employee_range)
+            
+            # Company category labels
+            company_category = company.get("company_category", "")
+            company_size_label = "PME" if company_category == "PME" else "ETI" if company_category == "ETI" else "GE" if company_category == "GE" else company_category
+            
+            # Build reasons for scoring
+            reasons = []
+            if ape in patterns['positive_patterns'].get('ape_distribution', {}):
+                reasons.append(f"Winning APE: {ape}")
+            if region in patterns['positive_patterns'].get('region_distribution', {}):
+                reasons.append(f"Winning region: {region}")
+            if employee_range in patterns['positive_patterns'].get('size_distribution', {}):
+                reasons.append(f"Winning size: {headcount_label}")
+            if company.get("legal_form") in patterns['positive_patterns'].get('legal_form_distribution', {}):
+                reasons.append(f"Winning legal form: {company.get('legal_form')}")
+            
+            # Determine band
+            if score >= 0.7:
+                band = "High"
+            elif score >= 0.4:
+                band = "Medium"
+            else:
+                band = "Low"
+            
+            scored_companies.append({
+                # Core identification
+                "name": company.get("company_name", "N/A"),
+                "siren": siren,
+                "siret": company.get("siret", "N/A"),
+                "ape": ape,
+                "region": region,
+                "location": location,
+                
+                # Legal unit data
+                "denominationUniteLegale": company.get("company_name", "N/A"),
+                "denominationUsuelle1UniteLegale": company.get("denominationUsuelle1UniteLegale", "N/A"),
+                "sigleUniteLegale": company.get("sigleUniteLegale", "N/A"),
+                "categorieJuridiqueUniteLegale": company.get("legal_form", "N/A"),
+                "activitePrincipaleUniteLegale": ape,
+                "categorieEntreprise": company_category,
+                "trancheEffectifsUniteLegale": employee_range,
+                "anneeEffectifsUniteLegale": company.get("legal_unit_employees_year", "N/A"),
+                "companySizeLabel": company_size_label,
+                "etatAdministratifUniteLegale": company.get("is_active", False) and "A" or "I",
+                "caractereEmployeurUniteLegale": company.get("is_employer", "N/A"),
+                "etablissementSiege": company.get("is_headquarters", False),
+                "dateCreationUniteLegale": company.get("legal_unit_creation_date", "N/A"),
+                "dateDernierTraitementUniteLegale": company.get("last_processing_date", "N/A"),
+                "economieSocialeSolidaireUniteLegale": company.get("social_economy", "N/A"),
+                "societeMissionUniteLegale": company.get("mission_company", "N/A"),
+                "identifiantAssociationUniteLegale": company.get("association_id", "N/A"),
+                
+                # Address data
+                "postal_code": company.get("postal_code", "N/A"),
+                "city": company.get("city", "N/A"),
+                "libelleVoieEtablissement": company.get("street_name", "N/A"),
+                "numeroVoieEtablissement": company.get("street_number", "N/A"),
+                "coordonneeLambertAbscisseEtablissement": company.get("x_coordinate", "N/A"),
+                "coordonneeLambertOrdonneeEtablissement": company.get("y_coordinate", "N/A"),
+                
+                # Scoring
+                "win_score": score,
+                "band": band,
+                "reasons": reasons,
+                "isActive": company.get("is_active", False)
+            })
         
         # Sort by score (highest first)
-        scored_companies.sort(key=lambda x: x['lead_score'], reverse=True)
+        scored_companies.sort(key=lambda x: x['win_score'], reverse=True)
         
         return {
             "ok": True,
