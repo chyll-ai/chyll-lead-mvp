@@ -1,9 +1,10 @@
-# Render deployment configuration
-# This file helps Render understand how to deploy the FastAPI app
-
-# Build command: pip install -r requirements.txt
-# Start command: cd services/fastapi && python -m uvicorn app-production:app --host 0.0.0.0 --port $PORT
-
-# Environment variables needed:
-# SIRENE_MODE=api
-# SIRENE_TOKEN=your_sirene_token_here
+services:
+  - type: web
+    name: chyll-fastapi
+    env: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SIRENE_MODE
+        value: api
+      - key: SIRENE_TOKEN
+        sync: false # Set this in Render dashboard
