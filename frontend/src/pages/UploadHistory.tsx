@@ -139,7 +139,7 @@ const UploadHistory: React.FC = () => {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500 max-w-xs">
                             <div className="flex flex-wrap gap-1">
-                              {(lead.reasons || []).slice(0, 2).map((reason, idx) => (
+                              {(lead.reasons || []).slice(0, 2).map((reason: string, idx: number) => (
                                 <span key={idx} className="inline-flex px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
                                   {reason}
                                 </span>
