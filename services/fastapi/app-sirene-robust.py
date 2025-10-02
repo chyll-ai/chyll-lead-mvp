@@ -247,10 +247,56 @@ def train(req: TrainRequest):
             "sklearn_available": SKLEARN_AVAILABLE
         }
         
+        # Auto-discover leads after training for seamless UX
+        discovered_leads = []
+        try:
+            # Get some sample leads to show immediately
+            if SIRENE_MODE == "api" and SIRENE_TOKEN:
+                companies = sirene_fetch_api("", rows=500, cap=500)
+                if companies:
+                    # Take first 5 companies for immediate preview
+                    sample_companies = companies[:5]
+                    df_sample = pd.DataFrame(sample_companies)
+                    df_sample = featurize_simple(df_sample)
+                    
+                    for i in range(len(df_sample)):
+                        current_text = f"{df_sample.iloc[i]['company_name']} {df_sample.iloc[i].get('ape', '')}"
+                        similarities = [simple_similarity(current_text, hist_text) for hist_text in artifacts["hist_texts"]]
+                        avg_similarity = np.mean(similarities) if similarities else 0.0
+                        
+                        if clf and SKLEARN_AVAILABLE:
+                            Xtab = pd.DataFrame([{
+                                "has_siren": int(df_sample.iloc[i]["has_siren"]),
+                                "age_years": float(df_sample.iloc[i]["age_years"]) if pd.notna(df_sample.iloc[i]["age_years"]) else -1.0,
+                            }]).fillna(0)
+                            p = float(clf.predict_proba(Xtab)[0][1])
+                        else:
+                            p = 0.5 + avg_similarity * 0.3
+                        
+                        p = min(0.95, p + avg_similarity * 0.1)
+                        band = "High" if p>=0.75 else ("Medium" if p>=0.5 else "Low")
+                        
+                        discovered_leads.append({
+                            "company_id": f"auto-disc-{i}",
+                            "name": df_sample.iloc[i]["company_name"],
+                            "siren": df_sample.iloc[i].get("siren",""),
+                            "ape": df_sample.iloc[i].get("ape",""),
+                            "region": df_sample.iloc[i].get("region",""),
+                            "department": df_sample.iloc[i].get("department",""),
+                            "win_score": round(p, 3), 
+                            "band": band,
+                            "confidence_badge": "Verified (SIREN)" if int(df_sample.iloc[i]["has_siren"]) else "High-confidence",
+                            "source": "sirene"
+                        })
+        except Exception as e:
+            print(f"Auto-discovery error: {e}")
+        
         return {
             "ok": True, 
             "stats": {"rows": int(len(df)), "wins": int(y.sum()), "losses": int((1-y).sum())}, 
-            "model_version": f"{tenant}-v1-sirene"
+            "model_version": f"{tenant}-v1-sirene",
+            "discovered_leads": discovered_leads[:5],  # Return first 5 discovered leads
+            "message": f"Model trained successfully! Found {len(discovered_leads)} potential leads."
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
