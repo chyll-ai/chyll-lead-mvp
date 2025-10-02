@@ -141,24 +141,27 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
                 ape = period.get("activitePrincipaleUniteLegale", "")
                 created = period.get("dateCreationUniteLegale", "")
                 created_year = int(created[:4]) if created[:4].isdigit() else None
+                etat = period.get("etatAdministratifUniteLegale", "")
                 
-                # Extract region and department from address if available
-                region = ""
-                department = ""
-                if "adresseEtablissement" in unit:
-                    addr = unit["adresseEtablissement"]
-                    region = addr.get("codeRegion", "")
-                    department = addr.get("codeDepartement", "")
-                
-                companies.append({
-                    "company_name": name,
-                    "siren": siren,
-                    "ape": ape,
-                    "created_year": created_year,
-                    "region": region,
-                    "department": department,
-                    "active": True
-                })
+                # Only include active companies (A = Active)
+                if etat == "A" and name:  # Only active companies with names
+                    # Extract region and department from address if available
+                    region = ""
+                    department = ""
+                    if "adresseEtablissement" in unit:
+                        addr = unit["adresseEtablissement"]
+                        region = addr.get("codeRegion", "")
+                        department = addr.get("codeDepartement", "")
+                    
+                    companies.append({
+                        "company_name": name,
+                        "siren": siren,
+                        "ape": ape,
+                        "created_year": created_year,
+                        "region": region,
+                        "department": department,
+                        "active": True
+                    })
         
         return companies[:cap]
     
@@ -167,43 +170,10 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
         return []
 
 def sirene_query_from_filters(f: DiscoverFilters):
-    """Build SIRENE query from filters according to SIRENE API v3.11 documentation"""
-    clauses = []
-    
-    # Always filter for active companies (A = Active, C = Closed)
-    clauses.append("etatAdministratifUniteLegale:A")
-    
-    if f.ape_codes:
-        # Use proper SIRENE query format for APE codes
-        ape_conditions = []
-        for ape in f.ape_codes:
-            ape_conditions.append(f"activitePrincipaleUniteLegale:{ape}")
-        if len(ape_conditions) > 1:
-            clauses.append(f"({' OR '.join(ape_conditions)})")
-        else:
-            clauses.append(ape_conditions[0])
-    
-    if f.regions:
-        # Use proper region code format
-        reg_conditions = []
-        for region in f.regions:
-            reg_conditions.append(f"codeRegion:{region}")
-        if len(reg_conditions) > 1:
-            clauses.append(f"({' OR '.join(reg_conditions)})")
-        else:
-            clauses.append(reg_conditions[0])
-    
-    if f.departments:
-        # Use proper department code format
-        dep_conditions = []
-        for dept in f.departments:
-            dep_conditions.append(f"codeDepartement:{dept}")
-        if len(dep_conditions) > 1:
-            clauses.append(f"({' OR '.join(dep_conditions)})")
-        else:
-            clauses.append(dep_conditions[0])
-    
-    return " AND ".join(clauses)
+    """Build SIRENE query from filters - simplified approach"""
+    # For now, let's use a simple approach and filter in our code
+    # The SIRENE API query syntax seems to be different than expected
+    return ""  # Empty query means get all companies, we'll filter in code
 
 def simple_similarity(text1: str, text2: str) -> float:
     """Simple text similarity based on common words"""
@@ -295,27 +265,38 @@ def discover(req: DiscoverRequest):
         f = req.filters or DiscoverFilters()
         limit = int(req.limit or 100)
         
-        # Try to fetch from SIRENE API
+        # Fetch from SIRENE API
         if SIRENE_MODE == "api" and SIRENE_TOKEN:
-            query = sirene_query_from_filters(f)
-            if query:
-                companies = sirene_fetch_api(query, rows=1000, cap=limit)
-                sirene_used = "api"
-                # If SIRENE API returns empty, fall back to demo data
-                if not companies:
-                    companies = [
-                        {"company_name":"GENERATIVSCHOOL","siren":"938422896","ape":"8559B","region":"11","department":"75","created_year":2024},
-                        {"company_name":"EDU LAB FR","siren":"111222333","ape":"8559B","region":"11","department":"92","created_year":2019},
-                        {"company_name":"QUIET SCHOOL","siren":"444555666","ape":"8559A","region":"11","department":"94","created_year":2016},
-                        {"company_name":"TECH STARTUP","siren":"777888999","ape":"6201Z","region":"11","department":"75","created_year":2023},
-                        {"company_name":"INNOVATION CORP","siren":"123456789","ape":"6202A","region":"11","department":"92","created_year":2020},
-                    ]
-                    sirene_used = "demo_fallback"
+            # Get a larger sample from SIRENE API and filter client-side
+            companies = sirene_fetch_api("", rows=2000, cap=2000)  # Get more companies
+            sirene_used = "api"
+            
+            # Client-side filtering based on user filters
+            if companies and f:
+                filtered_companies = []
+                for company in companies:
+                    include = True
+                    
+                    # Filter by APE codes
+                    if f.ape_codes and company.get("ape") not in f.ape_codes:
+                        include = False
+                    
+                    # Filter by regions
+                    if f.regions and company.get("region") not in f.regions:
+                        include = False
+                    
+                    # Filter by departments
+                    if f.departments and company.get("department") not in f.departments:
+                        include = False
+                    
+                    if include:
+                        filtered_companies.append(company)
+                
+                companies = filtered_companies[:limit]
             else:
-                companies = []
-                sirene_used = "no_query"
+                companies = companies[:limit]
         else:
-            # Fallback demo data
+            # Fallback demo data only if no SIRENE token
             companies = [
                 {"company_name":"GENERATIVSCHOOL","siren":"938422896","ape":"8559B","region":"11","department":"75","created_year":2024},
                 {"company_name":"EDU LAB FR","siren":"111222333","ape":"8559B","region":"11","department":"92","created_year":2019},
