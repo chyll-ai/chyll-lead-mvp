@@ -82,45 +82,67 @@ def get_age_range(created_year: int) -> str:
         return "established"
 
 def analyze_user_patterns(df: pd.DataFrame) -> Dict[str, Any]:
-    """Extract distribution patterns from user's successful deals"""
+    """Extract positive and negative patterns from user's deals"""
     print(f"[DEBUG] Analyzing patterns from {len(df)} total deals")
     
-    won_deals = df[df['deal_status'].str.lower() == 'won']
-    print(f"[DEBUG] Found {len(won_deals)} won deals")
+    # Clean and prepare data
+    df_clean = df.copy()
+    df_clean['ape'] = df_clean['ape'].fillna('').astype(str)
+    df_clean['postal_code'] = df_clean['postal_code'].fillna('').astype(str)
+    df_clean['employee_range'] = df_clean['employee_range'].fillna('').astype(str)
+    df_clean['legal_form'] = df_clean['legal_form'].fillna('').astype(str)
+    df_clean['created_year'] = pd.to_numeric(df_clean['created_year'], errors='coerce')
     
-    if len(won_deals) == 0:
+    # Separate won and lost deals
+    won_deals = df_clean[df_clean['deal_status'].str.lower() == 'won']
+    lost_deals = df_clean[df_clean['deal_status'].str.lower() == 'lost']
+    
+    print(f"[DEBUG] Found {len(won_deals)} won deals and {len(lost_deals)} lost deals")
+    
+    if len(won_deals) == 0 and len(lost_deals) == 0:
         return {
-            'ape_distribution': {},
-            'region_distribution': {},
-            'size_distribution': {},
-            'legal_form_distribution': {},
-            'age_distribution': {},
-            'total_won': 0
+            'positive_patterns': {},
+            'negative_patterns': {},
+            'total_won': 0,
+            'total_lost': 0
         }
     
-    # Clean and prepare data
-    won_deals = won_deals.copy()
-    won_deals['ape'] = won_deals['ape'].fillna('').astype(str)
-    won_deals['postal_code'] = won_deals['postal_code'].fillna('').astype(str)
-    won_deals['employee_range'] = won_deals['employee_range'].fillna('').astype(str)
-    won_deals['legal_form'] = won_deals['legal_form'].fillna('').astype(str)
-    won_deals['created_year'] = pd.to_numeric(won_deals['created_year'], errors='coerce')
+    # Analyze positive patterns (what's common in won deals)
+    positive_patterns = {}
+    if len(won_deals) > 0:
+        positive_patterns = {
+            'ape_distribution': won_deals['ape'].value_counts(normalize=True).to_dict(),
+            'region_distribution': won_deals['postal_code'].str[:2].value_counts(normalize=True).to_dict(),
+            'size_distribution': won_deals['employee_range'].value_counts(normalize=True).to_dict(),
+            'legal_form_distribution': won_deals['legal_form'].value_counts(normalize=True).to_dict(),
+            'age_distribution': won_deals['created_year'].apply(get_age_range).value_counts(normalize=True).to_dict()
+        }
+    
+    # Analyze negative patterns (what's common in lost deals)
+    negative_patterns = {}
+    if len(lost_deals) > 0:
+        negative_patterns = {
+            'ape_distribution': lost_deals['ape'].value_counts(normalize=True).to_dict(),
+            'region_distribution': lost_deals['postal_code'].str[:2].value_counts(normalize=True).to_dict(),
+            'size_distribution': lost_deals['employee_range'].value_counts(normalize=True).to_dict(),
+            'legal_form_distribution': lost_deals['legal_form'].value_counts(normalize=True).to_dict(),
+            'age_distribution': lost_deals['created_year'].apply(get_age_range).value_counts(normalize=True).to_dict()
+        }
     
     patterns = {
-        'ape_distribution': won_deals['ape'].value_counts(normalize=True).to_dict(),
-        'region_distribution': won_deals['postal_code'].str[:2].value_counts(normalize=True).to_dict(),
-        'size_distribution': won_deals['employee_range'].value_counts(normalize=True).to_dict(),
-        'legal_form_distribution': won_deals['legal_form'].value_counts(normalize=True).to_dict(),
-        'age_distribution': won_deals['created_year'].apply(get_age_range).value_counts(normalize=True).to_dict(),
-        'total_won': len(won_deals)
+        'positive_patterns': positive_patterns,
+        'negative_patterns': negative_patterns,
+        'total_won': len(won_deals),
+        'total_lost': len(lost_deals)
     }
     
-    print(f"[DEBUG] Patterns extracted:")
-    print(f"  - APE codes: {len(patterns['ape_distribution'])}")
-    print(f"  - Regions: {len(patterns['region_distribution'])}")
-    print(f"  - Sizes: {len(patterns['size_distribution'])}")
-    print(f"  - Legal forms: {len(patterns['legal_form_distribution'])}")
-    print(f"  - Age ranges: {len(patterns['age_distribution'])}")
+    print(f"[DEBUG] Positive patterns extracted:")
+    for key, value in positive_patterns.items():
+        print(f"  - {key}: {len(value)}")
+    
+    print(f"[DEBUG] Negative patterns extracted:")
+    for key, value in negative_patterns.items():
+        print(f"  - {key}: {len(value)}")
     
     return patterns
 
@@ -201,59 +223,81 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
         return []
 
 def score_company(company: Dict[str, Any], patterns: Dict[str, Any]) -> float:
-    """Score company based on how well it matches the user's success distribution"""
-    if patterns['total_won'] == 0:
+    """Score company based on positive and negative patterns"""
+    if patterns['total_won'] == 0 and patterns['total_lost'] == 0:
         return 0.5  # Default score if no patterns learned
     
-    score = 0.0
+    positive_score = 0.0
+    negative_score = 0.0
     
-    # APE code score (40% weight) - based on actual frequency in user's successful deals
+    # Get positive and negative patterns
+    pos_patterns = patterns.get('positive_patterns', {})
+    neg_patterns = patterns.get('negative_patterns', {})
+    
+    # APE code scoring (40% weight)
     ape = company.get('ape', '')
-    if ape in patterns['ape_distribution']:
-        score += 0.4 * patterns['ape_distribution'][ape]
+    if ape in pos_patterns.get('ape_distribution', {}):
+        positive_score += 0.4 * pos_patterns['ape_distribution'][ape]
+    if ape in neg_patterns.get('ape_distribution', {}):
+        negative_score += 0.4 * neg_patterns['ape_distribution'][ape]
     
-    # Region score (30% weight) - based on actual frequency in user's successful deals
+    # Region scoring (30% weight)
     postal_code = company.get('postal_code', '')
     if len(postal_code) >= 2:
         region = postal_code[:2]
-        if region in patterns['region_distribution']:
-            score += 0.3 * patterns['region_distribution'][region]
+        if region in pos_patterns.get('region_distribution', {}):
+            positive_score += 0.3 * pos_patterns['region_distribution'][region]
+        if region in neg_patterns.get('region_distribution', {}):
+            negative_score += 0.3 * neg_patterns['region_distribution'][region]
     
-    # Company size score (20% weight) - based on actual frequency in user's successful deals
+    # Company size scoring (20% weight)
     employee_range = company.get('employee_range', '')
-    if employee_range in patterns['size_distribution']:
-        score += 0.2 * patterns['size_distribution'][employee_range]
+    if employee_range in pos_patterns.get('size_distribution', {}):
+        positive_score += 0.2 * pos_patterns['size_distribution'][employee_range]
+    if employee_range in neg_patterns.get('size_distribution', {}):
+        negative_score += 0.2 * neg_patterns['size_distribution'][employee_range]
     
-    # Legal form score (10% weight) - based on actual frequency in user's successful deals
+    # Legal form scoring (10% weight)
     legal_form = company.get('legal_form', '')
-    if legal_form in patterns['legal_form_distribution']:
-        score += 0.1 * patterns['legal_form_distribution'][legal_form]
+    if legal_form in pos_patterns.get('legal_form_distribution', {}):
+        positive_score += 0.1 * pos_patterns['legal_form_distribution'][legal_form]
+    if legal_form in neg_patterns.get('legal_form_distribution', {}):
+        negative_score += 0.1 * neg_patterns['legal_form_distribution'][legal_form]
     
-    return min(score, 1.0)  # Cap at 1.0
+    # Calculate final score: positive patterns boost, negative patterns reduce
+    final_score = positive_score - (negative_score * 0.5)  # Negative patterns have less impact
+    
+    # Normalize to 0-1 range
+    final_score = max(0.0, min(1.0, final_score + 0.5))  # Shift to center around 0.5
+    
+    return final_score
 
 def build_sirene_filters(patterns: Dict[str, Any], min_frequency: float = 0.01) -> Dict[str, Any]:
-    """Build SIRENE filters using patterns that appear in at least min_frequency of successful deals"""
+    """Build SIRENE filters using positive patterns (what works)"""
     filters = {
         'etatAdministratifUniteLegale': 'A'  # Active companies only
     }
     
-    # Get APE codes that appear in at least min_frequency of successful deals
+    # Use positive patterns (what's common in won deals)
+    pos_patterns = patterns.get('positive_patterns', {})
+    
+    # Get APE codes that appear in at least min_frequency of won deals
     significant_ape_codes = [
-        ape for ape, freq in patterns['ape_distribution'].items() 
+        ape for ape, freq in pos_patterns.get('ape_distribution', {}).items() 
         if freq >= min_frequency and ape and ape != ''
     ]
     if significant_ape_codes:
         filters['ape'] = significant_ape_codes
     
-    # Get regions that appear in at least min_frequency of successful deals
+    # Get regions that appear in at least min_frequency of won deals
     significant_regions = [
-        region for region, freq in patterns['region_distribution'].items() 
+        region for region, freq in pos_patterns.get('region_distribution', {}).items() 
         if freq >= min_frequency and region and region != ''
     ]
     if significant_regions:
         filters['postal_code'] = significant_regions
     
-    print(f"[DEBUG] Built SIRENE filters: {filters}")
+    print(f"[DEBUG] Built SIRENE filters from positive patterns: {filters}")
     return filters
 
 @app.get("/health")
@@ -289,12 +333,20 @@ def train(req: TrainRequest):
             "stats": {
                 "total_deals": len(df),
                 "won_deals": patterns['total_won'],
-                "patterns_learned": {
-                    "ape_codes": len(patterns['ape_distribution']),
-                    "regions": len(patterns['region_distribution']),
-                    "sizes": len(patterns['size_distribution']),
-                    "legal_forms": len(patterns['legal_form_distribution']),
-                    "age_ranges": len(patterns['age_distribution'])
+                "lost_deals": patterns['total_lost'],
+                "positive_patterns": {
+                    "ape_codes": len(patterns['positive_patterns'].get('ape_distribution', {})),
+                    "regions": len(patterns['positive_patterns'].get('region_distribution', {})),
+                    "sizes": len(patterns['positive_patterns'].get('size_distribution', {})),
+                    "legal_forms": len(patterns['positive_patterns'].get('legal_form_distribution', {})),
+                    "age_ranges": len(patterns['positive_patterns'].get('age_distribution', {}))
+                },
+                "negative_patterns": {
+                    "ape_codes": len(patterns['negative_patterns'].get('ape_distribution', {})),
+                    "regions": len(patterns['negative_patterns'].get('region_distribution', {})),
+                    "sizes": len(patterns['negative_patterns'].get('size_distribution', {})),
+                    "legal_forms": len(patterns['negative_patterns'].get('legal_form_distribution', {})),
+                    "age_ranges": len(patterns['negative_patterns'].get('age_distribution', {}))
                 }
             },
             "model_version": f"{req.tenant_id}-v1-simple"
@@ -336,9 +388,12 @@ async def discover(req: DiscoverRequest):
             "companies": scored_companies[:req.limit],
             "total_found": len(scored_companies),
             "patterns_used": {
-                "ape_codes": list(patterns['ape_distribution'].keys())[:10],
-                "regions": list(patterns['region_distribution'].keys())[:10],
-                "total_patterns": sum(len(p) for p in patterns.values() if isinstance(p, dict))
+                "positive_ape_codes": list(patterns['positive_patterns'].get('ape_distribution', {}).keys())[:10],
+                "positive_regions": list(patterns['positive_patterns'].get('region_distribution', {}).keys())[:10],
+                "negative_ape_codes": list(patterns['negative_patterns'].get('ape_distribution', {}).keys())[:10],
+                "negative_regions": list(patterns['negative_patterns'].get('region_distribution', {}).keys())[:10],
+                "total_positive_patterns": sum(len(p) for p in patterns['positive_patterns'].values() if isinstance(p, dict)),
+                "total_negative_patterns": sum(len(p) for p in patterns['negative_patterns'].values() if isinstance(p, dict))
             }
         }
         
