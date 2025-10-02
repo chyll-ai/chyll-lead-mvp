@@ -851,6 +851,15 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["large_company_indicator"] = (df["employee_range"].isin(["53", "54", "55", "56", "57", "58", "59", "60", "61", "62"])).astype(int)
     df["small_company_indicator"] = (df["employee_range"].isin(["00", "01", "02", "03", "11", "12"])).astype(int)
     
+    # Add missing columns that are referenced later
+    df["has_complete_data"] = (
+        df["siren"].notna().astype(int) + 
+        df["ape"].notna().astype(int) + 
+        df["postal_code"].notna().astype(int) + 
+        df["city"].notna().astype(int)
+    ) / 4.0
+    df["is_active"] = df["active"].fillna(True).astype(int)
+    
     # 101-110: Composite Scores (10 points) - Based on actual SIRENE data
     df["composite_tech_score"] = (df["ape_tech_intensity"] * 0.6 + df["name_has_tech"] * 0.4)
     df["composite_geographic_score"] = (df["is_paris_region"] * 0.4 + df["is_lyon_region"] * 0.3 + df["is_marseille_region"] * 0.2 + df["is_toulouse_region"] * 0.1)
@@ -1379,25 +1388,36 @@ def train(req: TrainRequest):
             print(f"Won deals establishment counts: {dict(won_establishments)}")
         
         # Build enhanced training features using 110 data points
-        Xtab = pd.DataFrame({
-            "has_siren": df["has_siren"],
-            "age_years": df["age_years"].fillna(-1),
-            "employee_range_score": df["employee_range_score"],
-            "is_employer_score": df["is_employer_score"],
-            "company_category_score": df["company_category_score"],
-            "legal_category_score": df["legal_category_score"],
-            "establishment_count_score": df["establishment_count_score"],
-            "company_size_indicator": df["company_size_indicator"],
-            "composite_tech_score": df["composite_tech_score"],
-            "composite_geographic_score": df["composite_geographic_score"],
-            "composite_maturity_score": df["composite_maturity_score"],
-            "composite_business_score": df["composite_business_score"],
-            "composite_establishment_score": df["composite_establishment_score"],
-            "composite_innovation_score": df["composite_innovation_score"],
-            "composite_stability_score": df["composite_stability_score"],
-            "composite_growth_score": df["composite_growth_score"],
-            "composite_lead_score": df["composite_lead_score"]
-        }).fillna(0)
+        # Ensure all required columns exist with safe defaults
+        required_features = {
+            "has_siren": 0,
+            "age_years": -1,
+            "employee_range_score": 0.3,
+            "is_employer_score": 0,
+            "company_category_score": 0.3,
+            "legal_category_score": 0.3,
+            "establishment_count_score": 0.3,
+            "company_size_indicator": 0.3,
+            "composite_tech_score": 0.3,
+            "composite_geographic_score": 0.3,
+            "composite_maturity_score": 0.3,
+            "composite_business_score": 0.3,
+            "composite_establishment_score": 0.3,
+            "composite_innovation_score": 0.3,
+            "composite_stability_score": 0.3,
+            "composite_growth_score": 0.3,
+            "composite_lead_score": 0.3
+        }
+        
+        # Create feature dictionary with safe defaults for missing columns
+        feature_dict = {}
+        for feature, default_val in required_features.items():
+            if feature in df.columns:
+                feature_dict[feature] = df[feature]
+            else:
+                feature_dict[feature] = pd.Series([default_val] * len(df), index=df.index)
+        
+        Xtab = pd.DataFrame(feature_dict).fillna(0)
         
         y = (df["deal_status"].str.lower()=="won").astype(int).to_numpy()
         
