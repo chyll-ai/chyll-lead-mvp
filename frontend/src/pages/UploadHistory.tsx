@@ -26,14 +26,22 @@ const UploadHistory: React.FC = () => {
     try {
       const res = await postEdge("/train", { tenant_id: "dev-tenant", rows });
       console.log("Training response:", res); // Debug log
+      console.log("Response keys:", Object.keys(res)); // Debug log
+      console.log("discovered_leads:", res.discovered_leads); // Debug log
+      console.log("discovered_leads length:", res.discovered_leads?.length); // Debug log
+      
       if (res.ok && res.stats) {
         setLogs(`OK: rows=${res.stats.rows} wins=${res.stats.wins} losses=${res.stats.losses}`);
         
         // Show discovered leads if available
         if (res.discovered_leads && res.discovered_leads.length > 0) {
+          console.log("Setting discovered leads:", res.discovered_leads); // Debug log
           setDiscoveredLeads(res.discovered_leads);
           setShowLeads(true);
           setLogs(`${res.message || 'Model trained successfully!'} Showing ${res.discovered_leads.length} discovered leads.`);
+        } else {
+          console.log("No discovered leads found"); // Debug log
+          setLogs(`${res.message || 'Model trained successfully!'} No companies found matching your patterns.`);
         }
       } else {
         setLogs(`Error: ${res.error || 'Unknown error'}`);
