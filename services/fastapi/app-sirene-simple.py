@@ -316,7 +316,7 @@ def health():
     }
 
 @app.post("/train")
-def train(req: TrainRequest):
+async def train(req: TrainRequest):
     """Learn patterns from user's training data"""
     try:
         print(f"[DEBUG] Training with {len(req.rows)} rows")
