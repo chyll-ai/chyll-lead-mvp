@@ -113,29 +113,52 @@ const UploadHistory: React.FC = () => {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SIREN</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">APE</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Band</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Why</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SIREN</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">APE</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Legal Form</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Band</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Why</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {discoveredLeads.map((lead, i) => (
                         <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{lead.name}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                            {lead.city && lead.postal_code ? `${lead.city} (${lead.postal_code})` : 
-                             lead.city ? lead.city : 
-                             lead.postal_code ? lead.postal_code : 
-                             'N/A'}
+                          <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                            <div className="max-w-xs truncate" title={lead.name}>
+                              {lead.name}
+                            </div>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{lead.siren}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{lead.ape}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">{lead.win_score}</td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500 font-mono">{lead.siren}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500 font-mono">{lead.ape}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                            {lead.location || 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                            {lead.categorieJuridiqueUniteLegale || 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                            {lead.headcountLabelUL || lead.trancheEffectifsUniteLegale || 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                            {lead.companySizeLabel || lead.categorieEntreprise || 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              lead.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {lead.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 font-medium">
+                            {typeof lead.win_score === 'number' ? lead.win_score.toFixed(3) : lead.win_score}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                               lead.band === 'High' ? 'bg-green-100 text-green-800' :
                               lead.band === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
@@ -144,7 +167,7 @@ const UploadHistory: React.FC = () => {
                               {lead.band}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-500 max-w-xs">
+                          <td className="px-3 py-2 text-sm text-gray-500 max-w-xs">
                             <div className="flex flex-wrap gap-1">
                               {(lead.reasons || []).slice(0, 2).map((reason: string, idx: number) => (
                                 <span key={idx} className="inline-flex px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">

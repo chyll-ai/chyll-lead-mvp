@@ -451,12 +451,79 @@ async def train(req: TrainRequest):
                 else:
                     location = "N/A"
                 
+                # Calculate derived fields
+                siren = company.get("siren", "")
+                nic_siege = company.get("headquarters_nic", "")
+                seat_siret = f"{siren}{nic_siege}" if siren and nic_siege else ""
+                
+                # Company size labels
+                headcount_codes = {
+                    "NN": "Non employeur / inconnu",
+                    "00": "0 salarié (N)",
+                    "01": "1–2",
+                    "02": "3–5", 
+                    "03": "6–9",
+                    "11": "10–19",
+                    "12": "20–49",
+                    "21": "50–99",
+                    "22": "100–199",
+                    "31": "200–249",
+                    "32": "250–499",
+                    "41": "500–999",
+                    "42": "1 000–1 999",
+                    "51": "2 000–4 999",
+                    "52": "5 000–9 999",
+                    "53": "10 000+"
+                }
+                
+                employee_range = company.get("employee_range", "")
+                headcount_label = headcount_codes.get(employee_range, employee_range)
+                
+                # Company category labels
+                company_category = company.get("company_category", "")
+                company_size_label = "PME" if company_category == "PME" else "ETI" if company_category == "ETI" else "GE" if company_category == "GE" else company_category
+                
                 scored_companies.append({
+                    # Core identification
                     "name": company.get("company_name", "N/A"),
-                    "siren": company.get("siren", "N/A"),
+                    "siren": siren,
+                    "siret": company.get("siret", "N/A"),
                     "ape": ape,
                     "region": region,
                     "location": location,
+                    
+                    # Legal unit data
+                    "denominationUniteLegale": company.get("company_name", "N/A"),
+                    "denominationUsuelle1UniteLegale": company.get("denominationUsuelle1UniteLegale", ""),
+                    "denominationUsuelle2UniteLegale": company.get("denominationUsuelle2UniteLegale", ""),
+                    "denominationUsuelle3UniteLegale": company.get("denominationUsuelle3UniteLegale", ""),
+                    "sigleUniteLegale": company.get("sigleUniteLegale", ""),
+                    "categorieJuridiqueUniteLegale": company.get("legal_form", "N/A"),
+                    "activitePrincipaleUniteLegale": ape,
+                    "nomenclatureActivitePrincipaleUniteLegale": company.get("nomenclature_activity", ""),
+                    "categorieEntreprise": company_category,
+                    "anneeCategorieEntreprise": company.get("company_category_year", ""),
+                    "trancheEffectifsUniteLegale": employee_range,
+                    "anneeEffectifsUniteLegale": company.get("legal_unit_employees_year", ""),
+                    "economieSocialeSolidaireUniteLegale": company.get("social_economy", ""),
+                    "societeMissionUniteLegale": company.get("mission_company", ""),
+                    "etatAdministratifUniteLegale": "A" if company.get("is_active", False) else "C",
+                    "dateCreationUniteLegale": company.get("legal_unit_creation_date", ""),
+                    "dateDernierTraitementUniteLegale": company.get("last_processing_date", ""),
+                    "nicSiegeUniteLegale": nic_siege,
+                    "statutDiffusionUniteLegale": company.get("legal_unit_diffusion_status", ""),
+                    "unitePurgeeUniteLegale": company.get("unitePurgeeUniteLegale", ""),
+                    
+                    # Derived fields
+                    "seatSiret": seat_siret,
+                    "isActive": company.get("is_active", False),
+                    "isESS": company.get("social_economy") == "O",
+                    "isMissionCompany": company.get("mission_company") == "O",
+                    "isDiffusionPartialUL": company.get("legal_unit_diffusion_status") == "P",
+                    "companySizeLabel": company_size_label,
+                    "headcountLabelUL": headcount_label,
+                    
+                    # Scoring
                     "win_score": score,
                     "band": "High" if score > 0.8 else "Medium" if score > 0.6 else "Low",
                     "confidence_badge": f"{score:.1%}",
