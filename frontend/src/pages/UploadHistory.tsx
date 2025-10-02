@@ -71,7 +71,7 @@ const UploadHistory: React.FC = () => {
 
   return (
     <div className="bg-black py-12 px-4 sm:px-6 lg:px-8 min-h-screen">
-      {/* Dark theme - updated */}
+      {/* Dark theme - updated - v2 */}
       <div className="max-w-md mx-auto">
         <div className="text-center">
           <h2 className="mt-6 text-3xl font-extrabold text-white">
