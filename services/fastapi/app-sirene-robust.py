@@ -729,7 +729,7 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
             if df[col].dtype == 'object':
                 df[col] = df[col].fillna(default_val if isinstance(default_val, str) else "")
             else:
-                df[col] = df[col].fillna(default_val)
+                df[col] = df[col].fillna(value=default_val, inplace=False)
     
     # 1-10: Company Name Analysis (10 points) - Safe string operations
     df["name_length"] = df["company_name"].astype(str).str.len()
@@ -740,7 +740,7 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["name_complexity"] = df["company_name"].astype(str).str.count("[A-Z]") / df["name_length"].replace(0, 1)  # Avoid division by zero
     df["name_has_numbers"] = df["company_name"].astype(str).str.contains(r"\d", na=False).astype(int)
     df["name_has_special_chars"] = df["company_name"].astype(str).str.contains(r"[^a-zA-Z0-9\s]", na=False).astype(int)
-    df["name_starts_capital"] = df["company_name"].astype(str).str[0].str.isupper().fillna(False).astype(int)
+    df["name_starts_capital"] = df["company_name"].astype(str).str[0].str.isupper().fillna(value=False, inplace=False).astype(int)
     df["name_tech_score"] = df["company_name"].astype(str).str.lower().str.count("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart")
     
     # 11-20: SIREN Analysis (10 points) - Safe string operations
@@ -748,7 +748,7 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["siren_is_valid"] = df["siren"].astype(str).str.len().ge(9).astype(int)
     df["siren_has_leading_zeros"] = df["siren"].astype(str).str.startswith("0").astype(int)
     df["siren_checksum_valid"] = df["siren"].astype(str).apply(validate_siren_checksum)
-    df["siren_age_indicator"] = pd.to_numeric(df["siren"].astype(str).str[:2], errors="coerce").fillna(0)
+    df["siren_age_indicator"] = pd.to_numeric(df["siren"].astype(str).str[:2], errors="coerce").fillna(value=0, inplace=False)
     df["siren_region_code"] = df["siren"].astype(str).str[2:4]
     df["siren_department_code"] = df["siren"].astype(str).str[4:6]
     df["siren_sequence"] = df["siren"].astype(str).str[6:9]
@@ -765,7 +765,7 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["ape_is_services"] = df["ape"].astype(str).str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
     df["ape_is_manufacturing"] = df["ape"].astype(str).str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
     df["ape_complexity"] = df["ape"].astype(str).str.count("[A-Z]")
-    df["ape_numeric_part"] = pd.to_numeric(df["ape"].astype(str).str.extract(r"(\d+)", expand=False), errors="coerce").fillna(0)
+    df["ape_numeric_part"] = pd.to_numeric(df["ape"].astype(str).str.extract(r"(\d+)", expand=False), errors="coerce").fillna(value=0, inplace=False)
     
     # 31-40: Geographic Analysis (10 points) - Safe string operations
     df["postal_code_length"] = df["postal_code"].astype(str).str.len()
@@ -1353,8 +1353,11 @@ def health():
 @app.post("/train")
 def train(req: TrainRequest):
     try:
+        print(f"[DEBUG] Train function started")
         tenant = req.tenant_id
+        print(f"[DEBUG] Creating DataFrame from {len(req.rows)} rows")
         df = pd.DataFrame([r.model_dump() for r in req.rows])
+        print(f"[DEBUG] DataFrame created - shape: {df.shape}, columns: {list(df.columns)}")
         
         if df.empty: 
             return {"ok": False, "error": "no rows"}
@@ -1403,6 +1406,7 @@ def train(req: TrainRequest):
             print(f"Won deals establishment counts: {dict(won_establishments)}")
         
         # Build enhanced training features using 110 data points
+        print(f"[DEBUG] Building training features")
         # Ensure all required columns exist with safe defaults
         required_features = {
             "has_siren": 0,
@@ -1432,7 +1436,12 @@ def train(req: TrainRequest):
             else:
                 feature_dict[feature] = pd.Series([default_val] * len(df), index=df.index)
         
-        Xtab = pd.DataFrame(feature_dict).fillna(0)
+        print(f"[DEBUG] Creating Xtab DataFrame")
+        Xtab = pd.DataFrame(feature_dict)
+        print(f"[DEBUG] Xtab created - shape: {Xtab.shape}")
+        print(f"[DEBUG] About to call fillna(0) on Xtab")
+        Xtab = Xtab.fillna(value=0, inplace=False)
+        print(f"[DEBUG] Xtab fillna completed")
         
         y = (df["deal_status"].str.lower()=="won").astype(int).to_numpy()
         
@@ -1516,7 +1525,7 @@ def train(req: TrainRequest):
                             Xtab = pd.DataFrame([{
                                 "has_siren": int(df_sample.iloc[i]["has_siren"]),
                                 "age_years": float(df_sample.iloc[i]["age_years"]) if pd.notna(df_sample.iloc[i]["age_years"]) else -1.0,
-                            }]).fillna(0)
+                            }]).fillna(value=0, inplace=False)
                             ml_base_score = float(clf.predict_proba(Xtab)[0][1])
                         else:
                             ml_base_score = 0.3 + avg_similarity * 0.4  # Lower base, more similarity weight
@@ -1813,7 +1822,7 @@ def discover(req: DiscoverRequest):
                 Xtab = pd.DataFrame([{
                     "has_siren": int(df.iloc[i]["has_siren"]),
                     "age_years": float(df.iloc[i]["age_years"]) if pd.notna(df.iloc[i]["age_years"]) else -1.0,
-                }]).fillna(0)
+                }]).fillna(value=0, inplace=False)
                 
                 p = float(clf.predict_proba(Xtab)[0][1])
             else:
