@@ -178,6 +178,8 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
         query = " AND ".join(query_parts) if query_parts else "*"
         
         print(f"[DEBUG] SIRENE query: {query}")
+        print(f"[DEBUG] SIRENE URL: {SIRENE_BASE_URL}/siret")
+        print(f"[DEBUG] SIRENE params: {params}")
         
         async with httpx.AsyncClient() as client:
             headers = {
@@ -192,9 +194,12 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
             }
             
             response = await client.get(f"{SIRENE_BASE_URL}/siret", headers=headers, params=params)
+            print(f"[DEBUG] SIRENE response status: {response.status_code}")
             response.raise_for_status()
             
             data = response.json()
+            print(f"[DEBUG] SIRENE response data keys: {list(data.keys())}")
+            print(f"[DEBUG] SIRENE etablissements count: {len(data.get('etablissements', []))}")
             companies = []
             
             for etablissement in data.get('etablissements', []):
