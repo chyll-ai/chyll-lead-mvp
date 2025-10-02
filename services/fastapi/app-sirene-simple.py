@@ -29,7 +29,7 @@ app.add_middleware(
 )
 
 # Configuration
-SIRENE_API_KEY = os.getenv("SIRENE_API_KEY")
+SIRENE_API_KEY = os.getenv("SIRENE_TOKEN")
 SIRENE_BASE_URL = "https://api.insee.fr/api-sirene/3.11"
 SKLEARN_AVAILABLE = True
 HTTPX_AVAILABLE = True
