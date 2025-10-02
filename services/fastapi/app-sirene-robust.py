@@ -700,6 +700,7 @@ def get_business_district_score(row) -> float:
 
 def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     """Add 100 comprehensive data points for advanced lead scoring"""
+    print(f"[DEBUG add_comprehensive_data_points] Entry - df shape: {df.shape}")
     
     # Ensure all required columns exist with safe defaults
     safe_columns = {
@@ -726,12 +727,18 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = default_val
         else:
             # Safe type conversion
-            if df[col].dtype == 'object':
-                df[col] = df[col].fillna(default_val if isinstance(default_val, str) else "")
-            else:
-                df[col] = df[col].fillna(value=default_val, inplace=False)
+            try:
+                print(f"[DEBUG add_comprehensive_data_points] Processing column: {col}")
+                if df[col].dtype == 'object':
+                    df[col] = df[col].fillna(value=default_val if isinstance(default_val, str) else "", inplace=False)
+                else:
+                    df[col] = df[col].fillna(value=default_val, inplace=False)
+            except Exception as e:
+                print(f"[ERROR] fillna failed for column {col}: {e}")
+                raise
     
     # 1-10: Company Name Analysis (10 points) - Safe string operations
+    print(f"[DEBUG add_comprehensive_data_points] Starting company name analysis")
     df["name_length"] = df["company_name"].astype(str).str.len()
     df["name_word_count"] = df["company_name"].astype(str).str.split().str.len()
     df["name_has_tech"] = df["company_name"].astype(str).str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart", na=False).astype(int)
@@ -740,6 +747,7 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["name_complexity"] = df["company_name"].astype(str).str.count("[A-Z]") / df["name_length"].replace(0, 1)  # Avoid division by zero
     df["name_has_numbers"] = df["company_name"].astype(str).str.contains(r"\d", na=False).astype(int)
     df["name_has_special_chars"] = df["company_name"].astype(str).str.contains(r"[^a-zA-Z0-9\s]", na=False).astype(int)
+    print(f"[DEBUG add_comprehensive_data_points] Before name_starts_capital fillna")
     df["name_starts_capital"] = df["company_name"].astype(str).str[0].str.isupper().fillna(value=False, inplace=False).astype(int)
     df["name_tech_score"] = df["company_name"].astype(str).str.lower().str.count("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart")
     
