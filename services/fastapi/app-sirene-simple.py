@@ -177,6 +177,12 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
         
         query = " AND ".join(query_parts) if query_parts else "*"
         
+        params = {
+            "q": query,
+            "nombre": min(limit, 1000),
+            "debut": 1
+        }
+        
         print(f"[DEBUG] SIRENE query: {query}")
         print(f"[DEBUG] SIRENE URL: {SIRENE_BASE_URL}/siret")
         print(f"[DEBUG] SIRENE params: {params}")
@@ -185,12 +191,6 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
             headers = {
                 "X-INSEE-Api-Key-Integration": SIRENE_TOKEN,
                 "Accept": "application/json"
-            }
-            
-            params = {
-                "q": query,
-                "nombre": min(limit, 1000),
-                "debut": 1
             }
             
             response = await client.get(f"{SIRENE_BASE_URL}/siret", headers=headers, params=params)
@@ -336,6 +336,9 @@ def train(req: TrainRequest):
         return {
             "ok": True,
             "stats": {
+                "rows": len(df),
+                "wins": patterns['total_won'],
+                "losses": patterns['total_lost'],
                 "total_deals": len(df),
                 "won_deals": patterns['total_won'],
                 "lost_deals": patterns['total_lost'],
