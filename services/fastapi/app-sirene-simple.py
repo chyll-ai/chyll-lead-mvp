@@ -29,7 +29,7 @@ app.add_middleware(
 )
 
 # Configuration
-SIRENE_API_KEY = os.getenv("SIRENE_TOKEN")
+SIRENE_TOKEN = os.getenv("SIRENE_TOKEN", "your-sirene-token-here")
 SIRENE_BASE_URL = "https://api.insee.fr/api-sirene/3.11"
 SKLEARN_AVAILABLE = True
 HTTPX_AVAILABLE = True
@@ -183,7 +183,7 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
         
         async with httpx.AsyncClient() as client:
             headers = {
-                "X-INSEE-Api-Key-Integration": SIRENE_API_KEY,
+                "X-INSEE-Api-Key-Integration": SIRENE_TOKEN,
                 "Accept": "application/json"
             }
             
