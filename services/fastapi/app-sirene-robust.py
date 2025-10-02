@@ -765,7 +765,7 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["ape_is_services"] = df["ape"].astype(str).str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
     df["ape_is_manufacturing"] = df["ape"].astype(str).str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
     df["ape_complexity"] = df["ape"].astype(str).str.count("[A-Z]")
-    df["ape_numeric_part"] = pd.to_numeric(df["ape"].astype(str).str.extract(r"(\d+)")[0], errors="coerce").fillna(0)
+    df["ape_numeric_part"] = pd.to_numeric(df["ape"].astype(str).str.extract(r"(\d+)", expand=False), errors="coerce").fillna(0)
     
     # 31-40: Geographic Analysis (10 points) - Safe string operations
     df["postal_code_length"] = df["postal_code"].astype(str).str.len()
