@@ -1,0 +1,27 @@
+# Backend files - not needed for frontend deployment
+services/
+requirements.txt
+run.py
+railway.toml
+Procfile
+runtime.txt
+deploy-railway.sh
+deploy.sh
+DEPLOYMENT.md
+sample_data.csv
+test.html
+test-simple.html
+supabase/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Node modules (will be installed by Vercel)
+node_modules/
