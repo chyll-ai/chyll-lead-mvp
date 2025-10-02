@@ -42,7 +42,7 @@ app.add_middleware(
 # ---- Config
 SIRENE_MODE = os.getenv("SIRENE_MODE", "api")
 SIRENE_TOKEN = os.getenv("SIRENE_TOKEN", "")
-SIRENE_BASE = "https://api.insee.fr/entreprises/sirene/V3/siren"
+SIRENE_BASE = "https://api.insee.fr/api-sirene/3.11/siren"
 
 # Initialize HTTP client if available
 if HTTPX_AVAILABLE:
@@ -115,7 +115,7 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
         }
         
         if HTTPX_AVAILABLE and HTTP:
-            headers = {"Authorization": f"Bearer {SIRENE_TOKEN}"}
+            headers = {"X-INSEE-Api-Key-Integration": SIRENE_TOKEN}
             url = f"{SIRENE_BASE}"
             
             response = HTTP.get(url, headers=headers, params=params)
@@ -123,7 +123,7 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
             data = response.json()
         else:
             # Fallback to urllib
-            headers = {"Authorization": f"Bearer {SIRENE_TOKEN}"}
+            headers = {"X-INSEE-Api-Key-Integration": SIRENE_TOKEN}
             query_string = "&".join([f"{k}={v}" for k, v in params.items()])
             url = f"{SIRENE_BASE}?{query_string}"
             
