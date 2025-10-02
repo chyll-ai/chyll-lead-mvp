@@ -240,6 +240,12 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
         df["city"].notna().astype(int)
     ) / 4.0
     
+    # Advanced closability indicators
+    df["company_size_indicator"] = df["siren"].str.len().apply(lambda x: 0.8 if x >= 9 else 0.4)
+    df["growth_stage"] = df["age_years"].apply(get_growth_stage_score)
+    df["stability_score"] = df["age_years"].apply(get_stability_score)
+    df["deal_readiness"] = df.apply(lambda row: calculate_deal_readiness(row), axis=1)
+    
     return df
 
 def get_industry_score(ape_category: str) -> float:
@@ -277,6 +283,76 @@ def get_region_score(region: str) -> float:
         "44": 0.5,  # Loire-Atlantique (Nantes)
     }
     return region_scores.get(region, 0.4)  # Default score for other regions
+
+def get_growth_stage_score(age_years: float) -> float:
+    """Score based on company growth stage - optimal for deal closing"""
+    if pd.isna(age_years) or age_years < 0:
+        return 0.3  # Unknown age = lower score
+    
+    if age_years < 1:
+        return 0.2  # Too new, risky
+    elif age_years < 3:
+        return 0.7  # Growth stage - high potential
+    elif age_years < 7:
+        return 0.9  # Mature growth - optimal
+    elif age_years < 15:
+        return 0.8  # Established - good
+    else:
+        return 0.6  # Very old - might be conservative
+
+def get_stability_score(age_years: float) -> float:
+    """Score based on company stability - important for deal closing"""
+    if pd.isna(age_years) or age_years < 0:
+        return 0.3
+    
+    if age_years < 2:
+        return 0.3  # Not stable enough
+    elif age_years < 5:
+        return 0.7  # Becoming stable
+    elif age_years < 10:
+        return 0.9  # Very stable
+    else:
+        return 0.8  # Stable but might be slow to decide
+
+def calculate_deal_readiness(row) -> float:
+    """Calculate overall deal readiness based on multiple factors"""
+    # Company size (SIREN length indicates establishment)
+    size_score = 0.8 if len(str(row.get("siren", ""))) >= 9 else 0.4
+    
+    # Industry maturity (tech companies are more deal-ready)
+    ape = str(row.get("ape", ""))[:2]
+    industry_readiness = {
+        "62": 0.9,  # Computer programming - very deal-ready
+        "63": 0.8,  # Information services
+        "70": 0.7,  # Management consultancy
+        "71": 0.6,  # Engineering
+        "72": 0.6,  # R&D
+    }.get(ape, 0.4)
+    
+    # Geographic readiness (Paris/Lyon companies are more deal-ready)
+    city = str(row.get("city", "")).lower()
+    geo_readiness = 0.9 if "paris" in city else (0.8 if "lyon" in city else 0.5)
+    
+    # Age-based readiness
+    age = row.get("age_years", 0)
+    if pd.isna(age):
+        age_readiness = 0.3
+    elif 3 <= age <= 8:
+        age_readiness = 0.9  # Sweet spot for deals
+    elif 1 <= age < 3:
+        age_readiness = 0.7  # Growing companies
+    elif 8 < age <= 15:
+        age_readiness = 0.8  # Established
+    else:
+        age_readiness = 0.5  # Too new or too old
+    
+    # Weighted combination
+    return (
+        0.3 * size_score +
+        0.3 * industry_readiness +
+        0.2 * geo_readiness +
+        0.2 * age_readiness
+    )
 
 def extract_region_from_postal_code(postal_code: str) -> str:
     """Extract region code from French postal code"""
@@ -502,19 +578,23 @@ def train(req: TrainRequest):
                         maturity_score = df_sample.iloc[i].get("maturity_score", 0.3)
                         data_quality_score = df_sample.iloc[i].get("data_quality", 0.3)
                         
-                        # Company size indicators (if available)
-                        siren_length = len(str(df_sample.iloc[i].get("siren", "")))
-                        size_indicator = 0.6 if siren_length >= 9 else 0.4  # Longer SIREN = more established
+                        # Advanced closability indicators
+                        growth_stage_score = df_sample.iloc[i].get("growth_stage", 0.3)
+                        stability_score = df_sample.iloc[i].get("stability_score", 0.3)
+                        deal_readiness_score = df_sample.iloc[i].get("deal_readiness", 0.3)
+                        company_size_score = df_sample.iloc[i].get("company_size_indicator", 0.3)
                         
-                        # Calculate weighted composite score
+                        # Calculate weighted composite score focused on closability
                         p = (
-                            0.25 * ml_base_score +           # ML prediction (25%)
-                            0.20 * industry_score +          # Industry relevance (20%)
-                            0.15 * geographic_score +        # Geographic intelligence (15%)
-                            0.15 * maturity_score +          # Company maturity (15%)
-                            0.10 * data_quality_score +      # Data completeness (10%)
-                            0.10 * size_indicator +          # Company size (10%)
-                            0.05 * avg_similarity            # Historical similarity (5%)
+                            0.20 * ml_base_score +           # ML prediction (20%)
+                            0.15 * industry_score +          # Industry relevance (15%)
+                            0.15 * deal_readiness_score +    # Deal readiness (15%)
+                            0.12 * growth_stage_score +      # Growth stage (12%)
+                            0.12 * stability_score +         # Company stability (12%)
+                            0.10 * geographic_score +        # Geographic intelligence (10%)
+                            0.08 * company_size_score +      # Company size (8%)
+                            0.05 * data_quality_score +      # Data completeness (5%)
+                            0.03 * avg_similarity            # Historical similarity (3%)
                         )
                         
                         # Apply realistic bounds (not too optimistic)
@@ -560,8 +640,24 @@ def train(req: TrainRequest):
                             reasons.append(f"Similar to wins ({avg_similarity:.1f})")
                         
                         # Company size indicator
-                        if size_indicator > 0.5:
+                        if company_size_score > 0.6:
                             reasons.append("Established company")
+                        
+                        # Deal readiness indicators
+                        if deal_readiness_score > 0.7:
+                            reasons.append("Deal-ready")
+                        elif deal_readiness_score > 0.5:
+                            reasons.append("Good prospect")
+                        
+                        # Growth stage indicators
+                        if growth_stage_score > 0.8:
+                            reasons.append("Growth stage")
+                        elif growth_stage_score > 0.6:
+                            reasons.append("Expanding")
+                        
+                        # Stability indicators
+                        if stability_score > 0.8:
+                            reasons.append("Stable company")
                         
                         # Fallback reasons if none generated
                         if not reasons:
