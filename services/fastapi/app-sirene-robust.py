@@ -221,7 +221,11 @@ def train(req: TrainRequest):
         
         if SKLEARN_AVAILABLE and len(y) > 1:
             base = RandomForestClassifier(n_estimators=50, random_state=42, max_depth=5)
-            clf = CalibratedClassifierCV(base, method="isotonic", cv=min(3, len(y)))
+            # Use simple calibration for small datasets
+            if len(y) < 6:
+                clf = CalibratedClassifierCV(base, method="isotonic", cv=2)
+            else:
+                clf = CalibratedClassifierCV(base, method="isotonic", cv=min(3, len(y)))
             clf.fit(Xtab, y)
         else:
             clf = None
