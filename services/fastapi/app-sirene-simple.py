@@ -228,52 +228,69 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
         return []
 
 def score_company(company: Dict[str, Any], patterns: Dict[str, Any]) -> float:
-    """Score company based on positive and negative patterns"""
+    """Score company based on positive and negative patterns with weighted scoring"""
     if patterns['total_won'] == 0 and patterns['total_lost'] == 0:
         return 0.5  # Default score if no patterns learned
     
     positive_score = 0.0
     negative_score = 0.0
+    total_weight = 0.0
     
     # Get positive and negative patterns
     pos_patterns = patterns.get('positive_patterns', {})
     neg_patterns = patterns.get('negative_patterns', {})
     
-    # APE code scoring (40% weight)
+    # APE code scoring (50% weight - most important)
     ape = company.get('ape', '')
     if ape in pos_patterns.get('ape_distribution', {}):
-        positive_score += 0.4 * pos_patterns['ape_distribution'][ape]
+        ape_freq = pos_patterns['ape_distribution'][ape]
+        positive_score += 0.5 * ape_freq
+        total_weight += 0.5
     if ape in neg_patterns.get('ape_distribution', {}):
-        negative_score += 0.4 * neg_patterns['ape_distribution'][ape]
+        ape_freq = neg_patterns['ape_distribution'][ape]
+        negative_score += 0.5 * ape_freq
     
     # Region scoring (30% weight)
     postal_code = company.get('postal_code', '')
     if len(postal_code) >= 2:
         region = postal_code[:2]
         if region in pos_patterns.get('region_distribution', {}):
-            positive_score += 0.3 * pos_patterns['region_distribution'][region]
+            region_freq = pos_patterns['region_distribution'][region]
+            positive_score += 0.3 * region_freq
+            total_weight += 0.3
         if region in neg_patterns.get('region_distribution', {}):
-            negative_score += 0.3 * neg_patterns['region_distribution'][region]
+            region_freq = neg_patterns['region_distribution'][region]
+            negative_score += 0.3 * region_freq
     
-    # Company size scoring (20% weight)
+    # Company size scoring (15% weight)
     employee_range = company.get('employee_range', '')
     if employee_range in pos_patterns.get('size_distribution', {}):
-        positive_score += 0.2 * pos_patterns['size_distribution'][employee_range]
+        size_freq = pos_patterns['size_distribution'][employee_range]
+        positive_score += 0.15 * size_freq
+        total_weight += 0.15
     if employee_range in neg_patterns.get('size_distribution', {}):
-        negative_score += 0.2 * neg_patterns['size_distribution'][employee_range]
+        size_freq = neg_patterns['size_distribution'][employee_range]
+        negative_score += 0.15 * size_freq
     
-    # Legal form scoring (10% weight)
+    # Legal form scoring (5% weight)
     legal_form = company.get('legal_form', '')
     if legal_form in pos_patterns.get('legal_form_distribution', {}):
-        positive_score += 0.1 * pos_patterns['legal_form_distribution'][legal_form]
+        legal_freq = pos_patterns['legal_form_distribution'][legal_form]
+        positive_score += 0.05 * legal_freq
+        total_weight += 0.05
     if legal_form in neg_patterns.get('legal_form_distribution', {}):
-        negative_score += 0.1 * neg_patterns['legal_form_distribution'][legal_form]
+        legal_freq = neg_patterns['legal_form_distribution'][legal_form]
+        negative_score += 0.05 * legal_freq
     
     # Calculate final score: positive patterns boost, negative patterns reduce
-    final_score = positive_score - (negative_score * 0.5)  # Negative patterns have less impact
+    if total_weight > 0:
+        # Normalize by total weight applied
+        final_score = (positive_score - (negative_score * 0.3)) / total_weight
+    else:
+        final_score = 0.5  # Default if no patterns match
     
-    # Normalize to 0-1 range
-    final_score = max(0.0, min(1.0, final_score + 0.5))  # Shift to center around 0.5
+    # Ensure score is between 0 and 1
+    final_score = max(0.0, min(1.0, final_score))
     
     return final_score
 
@@ -360,6 +377,7 @@ async def train(req: TrainRequest):
                 ape = company.get("ape", "")
                 region = company.get("postal_code", "")[:2] if company.get("postal_code") else ""
                 
+                # Build detailed reasons based on pattern matches
                 if ape in patterns['positive_patterns'].get('ape_distribution', {}):
                     ape_freq = patterns['positive_patterns']['ape_distribution'][ape]
                     reasons.append(f"Winning APE code {ape} ({ape_freq:.1%} of wins)")
@@ -368,11 +386,29 @@ async def train(req: TrainRequest):
                     region_freq = patterns['positive_patterns']['region_distribution'][region]
                     reasons.append(f"Winning region {region} ({region_freq:.1%} of wins)")
                 
+                # Add company size if available
+                employee_range = company.get("employee_range", "")
+                if employee_range in patterns['positive_patterns'].get('size_distribution', {}):
+                    size_freq = patterns['positive_patterns']['size_distribution'][employee_range]
+                    reasons.append(f"Winning size {employee_range} ({size_freq:.1%} of wins)")
+                
+                # Add legal form if available
+                legal_form = company.get("legal_form", "")
+                if legal_form in patterns['positive_patterns'].get('legal_form_distribution', {}):
+                    legal_freq = patterns['positive_patterns']['legal_form_distribution'][legal_form]
+                    reasons.append(f"Winning legal form {legal_form} ({legal_freq:.1%} of wins)")
+                
+                # Get location info
+                city = company.get("city", "N/A")
+                postal_code = company.get("postal_code", "N/A")
+                location = f"{city}, {postal_code}" if city != "N/A" and postal_code != "N/A" else (city if city != "N/A" else postal_code)
+                
                 scored_companies.append({
                     "name": company.get("company_name", "N/A"),
                     "siren": company.get("siren", "N/A"),
                     "ape": ape,
                     "region": region,
+                    "location": location,
                     "win_score": score,
                     "band": "High" if score > 0.8 else "Medium" if score > 0.6 else "Low",
                     "confidence_badge": f"{score:.1%}",
