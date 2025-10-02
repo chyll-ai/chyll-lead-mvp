@@ -727,15 +727,18 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = default_val
         else:
             # Safe type conversion
-            try:
-                print(f"[DEBUG add_comprehensive_data_points] Processing column: {col}")
-                if df[col].dtype == 'object':
-                    df[col] = df[col].fillna(value=default_val if isinstance(default_val, str) else "", inplace=False)
+            print(f"[DEBUG add_comprehensive_data_points] Processing column: {col}, dtype: {df[col].dtype}, default_val: {default_val}")
+            # Replace fillna with direct assignment for missing values
+            if df[col].dtype == 'object':
+                fill_value = default_val if isinstance(default_val, str) else ""
+                df.loc[df[col].isna(), col] = fill_value
+            else:
+                # For numeric columns, ensure we use the right type
+                if default_val is None:
+                    fill_value = 0  # Default numeric fill
                 else:
-                    df[col] = df[col].fillna(value=default_val, inplace=False)
-            except Exception as e:
-                print(f"[ERROR] fillna failed for column {col}: {e}")
-                raise
+                    fill_value = default_val
+                df.loc[df[col].isna(), col] = fill_value
     
     # 1-10: Company Name Analysis (10 points) - Safe string operations
     print(f"[DEBUG add_comprehensive_data_points] Starting company name analysis")
@@ -748,7 +751,9 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["name_has_numbers"] = df["company_name"].astype(str).str.contains(r"\d", na=False).astype(int)
     df["name_has_special_chars"] = df["company_name"].astype(str).str.contains(r"[^a-zA-Z0-9\s]", na=False).astype(int)
     print(f"[DEBUG add_comprehensive_data_points] Before name_starts_capital fillna")
-    df["name_starts_capital"] = df["company_name"].astype(str).str[0].str.isupper().fillna(value=False, inplace=False).astype(int)
+    # Handle potential NaN from str[0] on empty strings
+    starts_capital = df["company_name"].astype(str).str[0].str.isupper()
+    df["name_starts_capital"] = starts_capital.fillna(False).astype(int)
     df["name_tech_score"] = df["company_name"].astype(str).str.lower().str.count("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart")
     
     # 11-20: SIREN Analysis (10 points) - Safe string operations
@@ -756,11 +761,13 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["siren_is_valid"] = df["siren"].astype(str).str.len().ge(9).astype(int)
     df["siren_has_leading_zeros"] = df["siren"].astype(str).str.startswith("0").astype(int)
     df["siren_checksum_valid"] = df["siren"].astype(str).apply(validate_siren_checksum)
-    df["siren_age_indicator"] = pd.to_numeric(df["siren"].astype(str).str[:2], errors="coerce").fillna(value=0, inplace=False)
+    siren_age = pd.to_numeric(df["siren"].astype(str).str[:2], errors="coerce")
+    df["siren_age_indicator"] = siren_age.fillna(0)
     df["siren_region_code"] = df["siren"].astype(str).str[2:4]
     df["siren_department_code"] = df["siren"].astype(str).str[4:6]
     df["siren_sequence"] = df["siren"].astype(str).str[6:9]
-    df["siren_parity"] = pd.to_numeric(df["siren"].astype(str).str[-1], errors="coerce").fillna(0) % 2
+    siren_parity = pd.to_numeric(df["siren"].astype(str).str[-1], errors="coerce")
+    df["siren_parity"] = siren_parity.fillna(0) % 2
     df["siren_establishment_count"] = df["siren"].astype(str).apply(estimate_establishment_count)
     
     # 21-30: APE Code Analysis (10 points) - Safe string operations
@@ -773,7 +780,8 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["ape_is_services"] = df["ape"].astype(str).str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
     df["ape_is_manufacturing"] = df["ape"].astype(str).str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
     df["ape_complexity"] = df["ape"].astype(str).str.count("[A-Z]")
-    df["ape_numeric_part"] = pd.to_numeric(df["ape"].astype(str).str.extract(r"(\d+)", expand=False), errors="coerce").fillna(value=0, inplace=False)
+    ape_numeric = pd.to_numeric(df["ape"].astype(str).str.extract(r"(\d+)", expand=False), errors="coerce")
+    df["ape_numeric_part"] = ape_numeric.fillna(0)
     
     # 31-40: Geographic Analysis (10 points) - Safe string operations
     df["postal_code_length"] = df["postal_code"].astype(str).str.len()
