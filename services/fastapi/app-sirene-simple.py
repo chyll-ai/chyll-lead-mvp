@@ -30,7 +30,7 @@ app.add_middleware(
 
 # Configuration
 SIRENE_TOKEN = os.getenv("SIRENE_TOKEN")
-SIRENE_BASE_URL = "https://api.insee.fr/entreprises/sirene/V3.11"
+SIRENE_BASE_URL = "https://api.insee.fr/entreprises/sirene/V3.11/siret"
 SKLEARN_AVAILABLE = True
 HTTPX_AVAILABLE = True
 
@@ -178,7 +178,7 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
         query = " AND ".join(query_parts) if query_parts else "*"
         
         print(f"[DEBUG] SIRENE query: {query}")
-        print(f"[DEBUG] SIRENE URL: {SIRENE_BASE_URL}/siret")
+        print(f"[DEBUG] SIRENE URL: {SIRENE_BASE_URL}")
         print(f"[DEBUG] SIRENE params: {params}")
         
         async with httpx.AsyncClient() as client:
@@ -193,7 +193,7 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
                 "debut": 1
             }
             
-            response = await client.get(f"{SIRENE_BASE_URL}/siret", headers=headers, params=params)
+            response = await client.get(SIRENE_BASE_URL, headers=headers, params=params)
             print(f"[DEBUG] SIRENE response status: {response.status_code}")
             response.raise_for_status()
             
