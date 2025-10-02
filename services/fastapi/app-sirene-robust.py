@@ -240,12 +240,13 @@ def train(req: TrainRequest):
             clf = None
         
         # Store artifacts
-        ARTIFACTS[tenant] = {
+        artifacts = {
             "clf": clf,
             "hist_labels": y,
             "hist_texts": [f"{row.company_name} {row.ape or ''}" for row in req.rows],
             "sklearn_available": SKLEARN_AVAILABLE
         }
+        ARTIFACTS[tenant] = artifacts
         
         # Auto-discover leads after training for seamless UX
         discovered_leads = []
