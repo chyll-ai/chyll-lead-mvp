@@ -1,4 +1,4 @@
-# Railway configuration for native Python deployment
+# Railway configuration for native Python deployment - Updated
 [deploy]
 startCommand = "python run.py"
 healthcheckPath = "/health"
