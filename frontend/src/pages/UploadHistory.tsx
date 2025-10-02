@@ -118,6 +118,7 @@ const UploadHistory: React.FC = () => {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">APE</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Band</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Why</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -135,6 +136,15 @@ const UploadHistory: React.FC = () => {
                             }`}>
                               {lead.band}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500 max-w-xs">
+                            <div className="flex flex-wrap gap-1">
+                              {(lead.reasons || []).slice(0, 2).map((reason, idx) => (
+                                <span key={idx} className="inline-flex px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+                                  {reason}
+                                </span>
+                              ))}
+                            </div>
                           </td>
                         </tr>
                       ))}
