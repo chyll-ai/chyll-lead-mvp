@@ -439,10 +439,17 @@ async def train(req: TrainRequest):
                     legal_freq = patterns['positive_patterns']['legal_form_distribution'][legal_form]
                     reasons.append(f"Winning legal form {legal_form} ({legal_freq:.1%} of wins)")
                 
-                # Get location info
-                city = company.get("city", "N/A")
-                postal_code = company.get("postal_code", "N/A")
-                location = f"{city}, {postal_code}" if city != "N/A" and postal_code != "N/A" else (city if city != "N/A" else postal_code)
+                # Get location info using SIRENE postal code
+                city = company.get("city", "")
+                postal_code = company.get("postal_code", "")
+                
+                # Use postal code as primary location identifier
+                if postal_code:
+                    location = f"{city}, {postal_code}" if city else postal_code
+                elif city:
+                    location = city
+                else:
+                    location = "N/A"
                 
                 scored_companies.append({
                     "name": company.get("company_name", "N/A"),
