@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chyll MVP Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 600px; }
+        button { padding: 10px 20px; margin: 10px 0; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 4px; }
+        textarea { width: 100%; height: 100px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Chyll MVP Test</h1>
+        
+        <h2>1. Test Health</h2>
+        <button onclick="testHealth()">Test Health</button>
+        <div id="health-result" class="result"></div>
+        
+        <h2>2. Train Model</h2>
+        <button onclick="trainModel()">Train Model</button>
+        <div id="train-result" class="result"></div>
+        
+        <h2>3. Discover Companies</h2>
+        <button onclick="discoverCompanies()">Discover Companies</button>
+        <div id="discover-result" class="result"></div>
+        
+        <h2>4. Raw API Test</h2>
+        <textarea id="api-input" placeholder="Enter JSON to test API...">{"tenant_id":"dev-tenant","rows":[{"company_name":"Test Corp","deal_status":"won","website":"test.com"}]}</textarea>
+        <button onclick="testAPI()">Test API</button>
+        <div id="api-result" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                document.getElementById('health-result').innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                document.getElementById('health-result').innerHTML = `<pre>Error: ${error.message}</pre>`;
+            }
+        }
+        
+        async function trainModel() {
+            try {
+                const response = await fetch(`${API_BASE}/train`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tenant_id: "dev-tenant",
+                        rows: [
+                            { company_name: "TechCorp France", deal_status: "won", website: "techcorp.fr", ape: "6201Z", created_year: "2020" },
+                            { company_name: "Innovate SAS", deal_status: "won", website: "innovate-sas.com", ape: "6201Z", created_year: "2019" },
+                            { company_name: "Digital Solutions", deal_status: "lost", website: "digitalsolutions.fr", ape: "6201Z", created_year: "2021" }
+                        ]
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('train-result').innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                document.getElementById('train-result').innerHTML = `<pre>Error: ${error.message}</pre>`;
+            }
+        }
+        
+        async function discoverCompanies() {
+            try {
+                const response = await fetch(`${API_BASE}/discover`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tenant_id: "dev-tenant",
+                        filters: {
+                            ape_codes: ["6201Z"],
+                            regions: ["Île-de-France"],
+                            age_buckets: ["0-5"],
+                            headcount_buckets: ["1-10"]
+                        }
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('discover-result').innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                document.getElementById('discover-result').innerHTML = `<pre>Error: ${error.message}</pre>`;
+            }
+        }
+        
+        async function testAPI() {
+            try {
+                const input = document.getElementById('api-input').value;
+                const body = JSON.parse(input);
+                const response = await fetch(`${API_BASE}/train`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                document.getElementById('api-result').innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                document.getElementById('api-result').innerHTML = `<pre>Error: ${error.message}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>

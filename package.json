@@ -1,0 +1,19 @@
+{
+  "name": "chyll-lead-mvp",
+  "version": "1.0.0",
+  "description": "Predictive lead scoring system for French companies",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:supabase": "supabase functions serve",
+    "dev:fastapi": "cd services/fastapi && uvicorn app:app --reload",
+    "start:supabase": "supabase start",
+    "stop:supabase": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:push": "supabase db push",
+    "install:frontend": "cd frontend && npm install",
+    "install:fastapi": "cd services/fastapi && pip install -r requirements.txt"
+  },
+  "keywords": ["lead-scoring", "ml", "supabase", "react", "fastapi"],
+  "author": "Your Name",
+  "license": "MIT"
+}
