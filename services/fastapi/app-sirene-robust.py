@@ -131,37 +131,44 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
             with urllib.request.urlopen(req) as response:
                 data = json.loads(response.read().decode())
         
-        companies = []
-        for unit in data.get("unitesLegales", []):
-            siren = unit.get("siren", "")
-            periods = unit.get("periodesUniteLegale", [])
-            if periods:
-                period = periods[0]
-                name = period.get("denominationUniteLegale") or period.get("nomUniteLegale", "")
-                ape = period.get("activitePrincipaleUniteLegale", "")
-                created = period.get("dateCreationUniteLegale", "")
-                created_year = int(created[:4]) if created[:4].isdigit() else None
-                etat = period.get("etatAdministratifUniteLegale", "")
-                
-                # Only include active companies (A = Active)
-                if etat == "A" and name:  # Only active companies with names
-                    # Extract region and department from address if available
-                    region = ""
-                    department = ""
-                    if "adresseEtablissement" in unit:
-                        addr = unit["adresseEtablissement"]
-                        region = addr.get("codeRegion", "")
-                        department = addr.get("codeDepartement", "")
+            companies = []
+            for unit in data.get("unitesLegales", []):
+                siren = unit.get("siren", "")
+                periods = unit.get("periodesUniteLegale", [])
+                if periods:
+                    period = periods[0]
+                    name = period.get("denominationUniteLegale") or period.get("nomUniteLegale", "")
+                    ape = period.get("activitePrincipaleUniteLegale", "")
+                    created = period.get("dateCreationUniteLegale", "")
+                    created_year = int(created[:4]) if created[:4].isdigit() else None
+                    etat = period.get("etatAdministratifUniteLegale", "")
                     
-                    companies.append({
-                        "company_name": name,
-                        "siren": siren,
-                        "ape": ape,
-                        "created_year": created_year,
-                        "region": region,
-                        "department": department,
-                        "active": True
-                    })
+                    # Only include active companies (A = Active)
+                    if etat == "A" and name:  # Only active companies with names
+                        # Extract region and department from address if available
+                        region = ""
+                        department = ""
+                        postal_code = ""
+                        city = ""
+                        
+                        if "adresseEtablissement" in unit:
+                            addr = unit["adresseEtablissement"]
+                            region = addr.get("codeRegion", "")
+                            department = addr.get("codeDepartement", "")
+                            postal_code = addr.get("codePostalEtablissement", "")
+                            city = addr.get("libelleCommuneEtablissement", "")
+                        
+                        companies.append({
+                            "company_name": name,
+                            "siren": siren,
+                            "ape": ape,
+                            "created_year": created_year,
+                            "region": region,
+                            "department": department,
+                            "postal_code": postal_code,
+                            "city": city,
+                            "active": True
+                        })
         
         return companies[:cap]
     
@@ -192,19 +199,26 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     """Enhanced feature engineering for smart scoring"""
     df = df.copy()
     
+    # Ensure required columns exist
+    if "postal_code" not in df.columns:
+        df["postal_code"] = ""
+    if "city" not in df.columns:
+        df["city"] = ""
+    
     # Basic features with safe type conversion
-    df["has_siren"] = df.get("siren", "").apply(lambda x: str(x) if pd.notna(x) else "").str.replace(r"\D","",regex=True).str.len().ge(9).astype(int)
-    df["created_year"] = pd.to_numeric(df.get("created_year", np.nan), errors="coerce")
+    df["siren"] = df["siren"].fillna("").astype(str)
+    df["has_siren"] = df["siren"].str.replace(r"\D","",regex=True).str.len().ge(9).astype(int)
+    df["created_year"] = pd.to_numeric(df["created_year"], errors="coerce")
     df["age_years"] = np.where(df["created_year"].notna(), pd.Timestamp.now().year - df["created_year"], np.nan)
     
     # Enhanced features for smart scoring with safe string handling
-    df["ape"] = df.get("ape", "").apply(lambda x: str(x) if pd.notna(x) else "")
+    df["ape"] = df["ape"].fillna("").astype(str)
     df["ape_category"] = df["ape"].str[:2]
     df["industry_score"] = df["ape_category"].map(get_industry_score)
     
     # Geographic intelligence from postal codes and cities
-    df["postal_code"] = df.get("postal_code", "").apply(lambda x: str(x) if pd.notna(x) else "")
-    df["city"] = df.get("city", "").apply(lambda x: str(x) if pd.notna(x) else "")
+    df["postal_code"] = df["postal_code"].fillna("").astype(str)
+    df["city"] = df["city"].fillna("").astype(str)
     df["region"] = df["postal_code"].apply(extract_region_from_postal_code)
     df["region_score"] = df["region"].map(get_region_score)
     df["city_score"] = df.apply(lambda row: get_city_score(row.get("city", ""), row.get("postal_code", "")), axis=1)
