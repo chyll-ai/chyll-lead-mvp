@@ -1,19 +1,16 @@
-# Production requirements for Railway deployment
+# Ultra-lightweight requirements for Railway free tier (0.5GB RAM)
 # Core FastAPI dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
 python-dotenv==1.0.0
 
-# Data processing
+# Essential data processing (lightweight)
 pandas==2.1.4
 numpy==1.24.4
 
-# Machine Learning (full capabilities)
+# Minimal ML (only sklearn for basic classification)
 scikit-learn==1.3.2
-lightgbm==4.1.0
-sentence-transformers==2.2.2
-faiss-cpu==1.7.4
 
 # Web and networking
 httpx==0.25.2
@@ -22,6 +19,3 @@ dnspython==2.4.2
 
 # Additional utilities
 pydantic-settings==2.1.0
-
-# Railway-specific optimizations
-gunicorn==21.2.0
