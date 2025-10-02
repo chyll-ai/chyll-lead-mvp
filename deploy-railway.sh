@@ -24,11 +24,8 @@ fi
 echo "📝 Setting up Railway deployment..."
 
 # Set environment variables
-echo "Setting environment variables..."
+echo "Setting SIRENE_TOKEN..."
 railway variables --set 'SIRENE_TOKEN=a39ed0ac-2e48-4e0f-9ed0-ac2e48ce0ff1'
-railway variables --set 'SIRENE_MODE=api'
-railway variables --set 'PORT=8000'
-railway variables --set 'PYTHON_VERSION=3.11'
 
 # Deploy the application
 echo "🚀 Deploying to Railway..."

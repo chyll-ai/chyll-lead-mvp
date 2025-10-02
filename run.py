@@ -9,7 +9,7 @@ import subprocess
 def main():
     # Install dependencies from root directory
     print("Installing dependencies...")
-    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements-production.txt'], check=True)
+    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'], check=True)
     
     # Change to the FastAPI directory
     os.chdir('services/fastapi')
