@@ -780,7 +780,7 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["city_is_capital"] = df["city"].astype(str).str.lower().str.contains("paris|lyon|marseille|toulouse|nice|nantes|strasbourg|montpellier|bordeaux|lille", na=False).astype(int)
     
     # 41-50: Age and Maturity Analysis (10 points)
-    df["age_years"] = pd.Timestamp.now().year - df["created_year"]
+    df["age_years"] = pd.Timestamp.now().year - pd.to_numeric(df["created_year"], errors="coerce")
     df["age_category"] = pd.cut(df["age_years"], bins=[0, 1, 3, 7, 15, 100], labels=["startup", "early", "growth", "mature", "established"])
     df["age_is_startup"] = (df["age_years"] < 2).astype(int)
     df["age_is_growth"] = ((df["age_years"] >= 2) & (df["age_years"] < 7)).astype(int)
@@ -792,15 +792,15 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["age_innovation"] = ((df["age_years"] >= 1) & (df["age_years"] <= 5)).astype(int)
     
     # 51-60: SIREN Pattern Analysis (10 points) - Based on actual SIREN data
-    df["siren_sequence_pattern"] = df["siren"].astype(str).str[6:9].astype(int, errors="coerce").fillna(0)
+    df["siren_sequence_pattern"] = pd.to_numeric(df["siren"].astype(str).str[6:9], errors="coerce").fillna(0).astype(int)
     df["siren_region_pattern"] = df["siren"].astype(str).str[2:4]
     df["siren_department_pattern"] = df["siren"].astype(str).str[4:6]
-    df["siren_creation_pattern"] = df["siren"].astype(str).str[:2].astype(int, errors="coerce").fillna(0)
-    df["siren_parity_pattern"] = df["siren"].astype(str).str[-1].astype(int, errors="coerce").fillna(0) % 2
-    df["siren_leading_digits"] = df["siren"].astype(str).str[:3].astype(int, errors="coerce").fillna(0)
-    df["siren_middle_digits"] = df["siren"].astype(str).str[3:6].astype(int, errors="coerce").fillna(0)
-    df["siren_trailing_digits"] = df["siren"].astype(str).str[6:9].astype(int, errors="coerce").fillna(0)
-    df["siren_checksum_digit"] = df["siren"].astype(str).str[-1].astype(int, errors="coerce").fillna(0)
+    df["siren_creation_pattern"] = pd.to_numeric(df["siren"].astype(str).str[:2], errors="coerce").fillna(0).astype(int)
+    df["siren_parity_pattern"] = pd.to_numeric(df["siren"].astype(str).str[-1], errors="coerce").fillna(0).astype(int) % 2
+    df["siren_leading_digits"] = pd.to_numeric(df["siren"].astype(str).str[:3], errors="coerce").fillna(0).astype(int)
+    df["siren_middle_digits"] = pd.to_numeric(df["siren"].astype(str).str[3:6], errors="coerce").fillna(0).astype(int)
+    df["siren_trailing_digits"] = pd.to_numeric(df["siren"].astype(str).str[6:9], errors="coerce").fillna(0).astype(int)
+    df["siren_checksum_digit"] = pd.to_numeric(df["siren"].astype(str).str[-1], errors="coerce").fillna(0).astype(int)
     df["siren_validation_score"] = df["siren"].astype(str).apply(validate_siren_checksum)
     
     # 61-70: APE Code Deep Analysis (10 points) - Based on actual APE data
