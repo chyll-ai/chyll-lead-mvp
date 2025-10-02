@@ -114,6 +114,8 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
             "tri": "siren"
         }
         
+        companies = []  # Initialize companies list
+        
         if HTTPX_AVAILABLE and HTTP:
             headers = {"X-INSEE-Api-Key-Integration": SIRENE_TOKEN}
             url = f"{SIRENE_BASE}"
@@ -131,44 +133,44 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
             with urllib.request.urlopen(req) as response:
                 data = json.loads(response.read().decode())
         
-            companies = []
-            for unit in data.get("unitesLegales", []):
-                siren = unit.get("siren", "")
-                periods = unit.get("periodesUniteLegale", [])
-                if periods:
-                    period = periods[0]
-                    name = period.get("denominationUniteLegale") or period.get("nomUniteLegale", "")
-                    ape = period.get("activitePrincipaleUniteLegale", "")
-                    created = period.get("dateCreationUniteLegale", "")
-                    created_year = int(created[:4]) if created[:4].isdigit() else None
-                    etat = period.get("etatAdministratifUniteLegale", "")
+        # Process companies from API response (works for both httpx and urllib)
+        for unit in data.get("unitesLegales", []):
+            siren = unit.get("siren", "")
+            periods = unit.get("periodesUniteLegale", [])
+            if periods:
+                period = periods[0]
+                name = period.get("denominationUniteLegale") or period.get("nomUniteLegale", "")
+                ape = period.get("activitePrincipaleUniteLegale", "")
+                created = period.get("dateCreationUniteLegale", "")
+                created_year = int(created[:4]) if created[:4].isdigit() else None
+                etat = period.get("etatAdministratifUniteLegale", "")
+                
+                # Only include active companies (A = Active)
+                if etat == "A" and name:  # Only active companies with names
+                    # Extract region and department from address if available
+                    region = ""
+                    department = ""
+                    postal_code = ""
+                    city = ""
                     
-                    # Only include active companies (A = Active)
-                    if etat == "A" and name:  # Only active companies with names
-                        # Extract region and department from address if available
-                        region = ""
-                        department = ""
-                        postal_code = ""
-                        city = ""
-                        
-                        if "adresseEtablissement" in unit:
-                            addr = unit["adresseEtablissement"]
-                            region = addr.get("codeRegion", "")
-                            department = addr.get("codeDepartement", "")
-                            postal_code = addr.get("codePostalEtablissement", "")
-                            city = addr.get("libelleCommuneEtablissement", "")
-                        
-                        companies.append({
-                            "company_name": name,
-                            "siren": siren,
-                            "ape": ape,
-                            "created_year": created_year,
-                            "region": region,
-                            "department": department,
-                            "postal_code": postal_code,
-                            "city": city,
-                            "active": True
-                        })
+                    if "adresseEtablissement" in unit:
+                        addr = unit["adresseEtablissement"]
+                        region = addr.get("codeRegion", "")
+                        department = addr.get("codeDepartement", "")
+                        postal_code = addr.get("codePostalEtablissement", "")
+                        city = addr.get("libelleCommuneEtablissement", "")
+                    
+                    companies.append({
+                        "company_name": name,
+                        "siren": siren,
+                        "ape": ape,
+                        "created_year": created_year,
+                        "region": region,
+                        "department": department,
+                        "postal_code": postal_code,
+                        "city": city,
+                        "active": True
+                    })
         
         return companies[:cap]
     
@@ -536,8 +538,11 @@ def train(req: TrainRequest):
                             "similarity_score": round(avg_similarity, 3)
                         })
                     
-                    # Quality filtering - only high-scoring leads
-                    high_quality_leads = [c for c in scored_companies if c["win_score"] >= 0.65]
+                    # Debug: Show all scores before filtering
+                    print(f"All {len(scored_companies)} companies with scores: {[c['win_score'] for c in scored_companies[:5]]}")
+                    
+                    # Quality filtering - only high-scoring leads (lowered threshold for testing)
+                    high_quality_leads = [c for c in scored_companies if c["win_score"] >= 0.50]
                     
                     # Sort by win score and take top results
                     high_quality_leads.sort(key=lambda x: x["win_score"], reverse=True)
