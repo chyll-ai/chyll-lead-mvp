@@ -458,19 +458,26 @@ def train(req: TrainRequest):
         # Auto-discover leads after training for seamless UX
         discovered_leads = []
         try:
-            # Optimized for Railway free plan - get more companies efficiently
+            # Optimized for Railway free plan - get companies efficiently
             if SIRENE_MODE == "api" and SIRENE_TOKEN:
-                companies = sirene_fetch_api("", rows=1000, cap=1000)  # Get more companies
+                companies = sirene_fetch_api("", rows=500, cap=500)  # Reduced to 500 for efficiency
                 if companies:
                     print(f"Fetched {len(companies)} companies from SIRENE")
-                    print(f"Sample company data: {companies[0] if companies else 'None'}")
                     
-                    # Process all companies and score them
+                    # Process companies and score them
                     df_sample = pd.DataFrame(companies)
-                    print(f"DataFrame columns: {df_sample.columns.tolist()}")
-                    print(f"DataFrame dtypes: {df_sample.dtypes.to_dict()}")
-                    
                     df_sample = featurize_simple(df_sample)
+                    
+                    # Pre-filter before scoring to reduce processing
+                    # Only score companies with basic data quality
+                    df_sample = df_sample[
+                        (df_sample["company_name"].notna()) & 
+                        (df_sample["company_name"] != "") &
+                        (df_sample["ape"].notna()) &
+                        (df_sample["ape"] != "")
+                    ]
+                    
+                    print(f"Processing {len(df_sample)} companies with complete data")
                     
                     # Score all companies
                     scored_companies = []
@@ -581,8 +588,10 @@ def train(req: TrainRequest):
                             "similarity_score": round(avg_similarity, 3)
                         })
                     
-                    # Debug: Show all scores before filtering
-                    print(f"All {len(scored_companies)} companies with scores: {[c['win_score'] for c in scored_companies[:5]]}")
+                    # Show scoring distribution
+                    scores = [c['win_score'] for c in scored_companies]
+                    print(f"Scored {len(scored_companies)} companies - Score range: {min(scores):.2f} to {max(scores):.2f}")
+                    print(f"Score distribution: {len([s for s in scores if s >= 0.7])} high, {len([s for s in scores if 0.5 <= s < 0.7])} medium, {len([s for s in scores if s < 0.5])} low")
                     
                     # Quality filtering - only high-scoring leads (realistic threshold)
                     high_quality_leads = [c for c in scored_companies if c["win_score"] >= 0.60]
@@ -591,8 +600,9 @@ def train(req: TrainRequest):
                     high_quality_leads.sort(key=lambda x: x["win_score"], reverse=True)
                     discovered_leads = high_quality_leads[:8]  # Show top 8 high-quality leads
                     
-                    print(f"Filtered {len(scored_companies)} companies to {len(high_quality_leads)} high-quality leads")
-                    print(f"Selected top {len(discovered_leads)} companies with scores {[c['win_score'] for c in discovered_leads[:3]]}")
+                    print(f"Quality filter: {len(scored_companies)} → {len(high_quality_leads)} → {len(discovered_leads)} final leads")
+                    if discovered_leads:
+                        print(f"Top 3 scores: {[c['win_score'] for c in discovered_leads[:3]]}")
                     
         except Exception as e:
             print(f"Auto-discovery error: {e}")
