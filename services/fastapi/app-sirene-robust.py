@@ -184,10 +184,154 @@ def sirene_query_from_filters(f: DiscoverFilters):
     # The SIRENE API query syntax seems to be different than expected
     return ""  # Empty query means get all companies, we'll filter in code
 
+def analyze_deal_patterns(historical_data: List[HistoryRow]) -> dict:
+    """Advanced analysis of won vs lost deal patterns"""
+    if not historical_data:
+        return {}
+    
+    won_deals = [row for row in historical_data if row.deal_status == "won"]
+    lost_deals = [row for row in historical_data if row.deal_status == "lost"]
+    
+    analysis = {
+        "won_count": len(won_deals),
+        "lost_count": len(lost_deals),
+        "win_rate": len(won_deals) / len(historical_data) if historical_data else 0,
+        "patterns": {}
+    }
+    
+    # Analyze company naming patterns
+    won_names = [deal.company_name.lower() for deal in won_deals]
+    lost_names = [deal.company_name.lower() for deal in lost_deals]
+    
+    # Extract naming patterns
+    won_keywords = extract_company_keywords(won_names)
+    lost_keywords = extract_company_keywords(lost_names)
+    
+    analysis["patterns"]["naming"] = {
+        "won_keywords": won_keywords,
+        "lost_keywords": lost_keywords,
+        "successful_patterns": [kw for kw in won_keywords if kw not in lost_keywords]
+    }
+    
+    # Analyze geographic patterns
+    won_regions = extract_regions_from_deals(won_deals)
+    lost_regions = extract_regions_from_deals(lost_deals)
+    
+    analysis["patterns"]["geographic"] = {
+        "won_regions": won_regions,
+        "lost_regions": lost_regions,
+        "successful_regions": [r for r in won_regions if r not in lost_regions]
+    }
+    
+    # Analyze industry patterns
+    won_apes = extract_ape_codes_from_deals(won_deals)
+    lost_apes = extract_ape_codes_from_deals(lost_deals)
+    
+    analysis["patterns"]["industry"] = {
+        "won_apes": won_apes,
+        "lost_apes": lost_apes,
+        "successful_industries": [ape for ape in won_apes if ape not in lost_apes]
+    }
+    
+    # Analyze company maturity patterns
+    won_ages = extract_company_ages_from_deals(won_deals)
+    lost_ages = extract_company_ages_from_deals(lost_deals)
+    
+    analysis["patterns"]["maturity"] = {
+        "won_age_range": analyze_age_patterns(won_ages),
+        "lost_age_range": analyze_age_patterns(lost_ages),
+        "optimal_age_range": find_optimal_age_range(won_ages, lost_ages)
+    }
+    
+    return analysis
+
+def extract_company_keywords(names: List[str]) -> List[str]:
+    """Extract meaningful keywords from company names"""
+    keywords = []
+    tech_keywords = ["tech", "digital", "data", "soft", "system", "solution", "innovation", "intelligence", "cloud", "ai", "ml"]
+    business_keywords = ["consulting", "services", "group", "corp", "sas", "sarl", "sa", "ltd"]
+    
+    for name in names:
+        words = name.split()
+        for word in words:
+            clean_word = word.lower().strip(".,-()")
+            if len(clean_word) > 3 and clean_word in tech_keywords + business_keywords:
+                keywords.append(clean_word)
+    
+    # Return most common keywords
+    from collections import Counter
+    return [kw for kw, count in Counter(keywords).most_common(5)]
+
+def extract_regions_from_deals(deals: List[HistoryRow]) -> List[str]:
+    """Extract regions from deals"""
+    regions = []
+    for deal in deals:
+        if hasattr(deal, 'postal_code') and deal.postal_code:
+            postal_str = str(deal.postal_code).zfill(5)
+            first_two = postal_str[:2]
+            if first_two in ["75", "77", "78", "91", "92", "93", "94", "95"]:
+                regions.append("11")  # Île-de-France
+            elif first_two == "69":
+                regions.append("69")  # Rhône
+            elif first_two == "13":
+                regions.append("13")  # Bouches-du-Rhône
+    return list(set(regions))
+
+def extract_ape_codes_from_deals(deals: List[HistoryRow]) -> List[str]:
+    """Extract APE codes from deals"""
+    apes = []
+    for deal in deals:
+        if hasattr(deal, 'ape') and deal.ape:
+            apes.append(deal.ape)
+    return list(set(apes))
+
+def extract_company_ages_from_deals(deals: List[HistoryRow]) -> List[int]:
+    """Extract company ages from deals"""
+    ages = []
+    current_year = pd.Timestamp.now().year
+    for deal in deals:
+        if hasattr(deal, 'created_year') and deal.created_year:
+            age = current_year - int(deal.created_year)
+            if age > 0:
+                ages.append(age)
+    return ages
+
+def analyze_age_patterns(ages: List[int]) -> dict:
+    """Analyze age patterns"""
+    if not ages:
+        return {"avg": 0, "min": 0, "max": 0, "range": "unknown"}
+    
+    return {
+        "avg": sum(ages) / len(ages),
+        "min": min(ages),
+        "max": max(ages),
+        "range": f"{min(ages)}-{max(ages)}"
+    }
+
+def find_optimal_age_range(won_ages: List[int], lost_ages: List[int]) -> str:
+    """Find optimal age range based on won vs lost patterns"""
+    if not won_ages:
+        return "unknown"
+    
+    # Find age ranges where won deals are more common
+    won_avg = sum(won_ages) / len(won_ages) if won_ages else 0
+    lost_avg = sum(lost_ages) / len(lost_ages) if lost_ages else 0
+    
+    if won_avg < lost_avg:
+        return "younger companies"
+    elif won_avg > lost_avg:
+        return "older companies"
+    else:
+        return "mixed age range"
+
 def build_smart_sirene_query(historical_data: List[HistoryRow]) -> str:
-    """Build smart SIRENE query based on historical won deals"""
+    """Build smart SIRENE query based on advanced deal pattern analysis"""
     if not historical_data:
         return "etatAdministratifUniteLegale:A"  # Just active companies
+    
+    # Analyze deal patterns
+    analysis = analyze_deal_patterns(historical_data)
+    print(f"Deal analysis: {analysis}")
     
     # Extract patterns from won deals
     won_deals = [row for row in historical_data if row.deal_status == "won"]
