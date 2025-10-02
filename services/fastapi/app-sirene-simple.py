@@ -333,32 +333,95 @@ def train(req: TrainRequest):
         # Store patterns for this tenant
         LEARNED_PATTERNS[req.tenant_id] = patterns
         
-        return {
-            "ok": True,
-            "stats": {
-                "rows": len(df),
-                "wins": patterns['total_won'],
-                "losses": patterns['total_lost'],
-                "total_deals": len(df),
-                "won_deals": patterns['total_won'],
-                "lost_deals": patterns['total_lost'],
-                "positive_patterns": {
-                    "ape_codes": len(patterns['positive_patterns'].get('ape_distribution', {})),
-                    "regions": len(patterns['positive_patterns'].get('region_distribution', {})),
-                    "sizes": len(patterns['positive_patterns'].get('size_distribution', {})),
-                    "legal_forms": len(patterns['positive_patterns'].get('legal_form_distribution', {})),
-                    "age_ranges": len(patterns['positive_patterns'].get('age_distribution', {}))
+        # Automatically discover companies using the learned patterns
+        print(f"[DEBUG] Auto-discovering companies after training...")
+        try:
+            # Build SIRENE filters from positive patterns
+            sirene_filters = build_sirene_filters(patterns, min_frequency=0.01)
+            print(f"[DEBUG] Built SIRENE filters: {sirene_filters}")
+            
+            # Fetch companies from SIRENE
+            companies = await fetch_sirene_companies(sirene_filters, limit=20)
+            print(f"[DEBUG] Fetched {len(companies)} companies from SIRENE")
+            
+            # Score companies based on patterns
+            scored_companies = []
+            for company in companies:
+                score = score_company(company, patterns)
+                scored_companies.append({
+                    "name": company.get("denominationUniteLegale", "N/A"),
+                    "siren": company.get("siren", "N/A"),
+                    "ape": company.get("activitePrincipaleUniteLegale", "N/A"),
+                    "region": company.get("codePostalEtablissement", "N/A")[:2] if company.get("codePostalEtablissement") else "N/A",
+                    "win_score": score,
+                    "band": "High" if score > 0.7 else "Medium" if score > 0.4 else "Low",
+                    "confidence_badge": f"{score:.1%}",
+                    "reasons": [f"Matches positive patterns (score: {score:.2f})"],
+                    "source": "SIRENE"
+                })
+            
+            # Sort by score (highest first)
+            scored_companies.sort(key=lambda x: x["win_score"], reverse=True)
+            
+            return {
+                "ok": True,
+                "stats": {
+                    "rows": len(df),
+                    "wins": patterns['total_won'],
+                    "losses": patterns['total_lost'],
+                    "total_deals": len(df),
+                    "won_deals": patterns['total_won'],
+                    "lost_deals": patterns['total_lost'],
+                    "positive_patterns": {
+                        "ape_codes": len(patterns['positive_patterns'].get('ape_distribution', {})),
+                        "regions": len(patterns['positive_patterns'].get('region_distribution', {})),
+                        "sizes": len(patterns['positive_patterns'].get('size_distribution', {})),
+                        "legal_forms": len(patterns['positive_patterns'].get('legal_form_distribution', {})),
+                        "age_ranges": len(patterns['positive_patterns'].get('age_distribution', {}))
+                    },
+                    "negative_patterns": {
+                        "ape_codes": len(patterns['negative_patterns'].get('ape_distribution', {})),
+                        "regions": len(patterns['negative_patterns'].get('region_distribution', {})),
+                        "sizes": len(patterns['negative_patterns'].get('size_distribution', {})),
+                        "legal_forms": len(patterns['negative_patterns'].get('legal_form_distribution', {})),
+                        "age_ranges": len(patterns['negative_patterns'].get('age_distribution', {}))
+                    }
                 },
-                "negative_patterns": {
-                    "ape_codes": len(patterns['negative_patterns'].get('ape_distribution', {})),
-                    "regions": len(patterns['negative_patterns'].get('region_distribution', {})),
-                    "sizes": len(patterns['negative_patterns'].get('size_distribution', {})),
-                    "legal_forms": len(patterns['negative_patterns'].get('legal_form_distribution', {})),
-                    "age_ranges": len(patterns['negative_patterns'].get('age_distribution', {}))
-                }
-            },
-            "model_version": f"{req.tenant_id}-v1-simple"
-        }
+                "model_version": f"{req.tenant_id}-v1-simple",
+                "discovered_leads": scored_companies,
+                "message": f"Model trained successfully! Found {len(scored_companies)} matching companies from SIRENE."
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] Auto-discovery failed: {e}")
+            return {
+                "ok": True,
+                "stats": {
+                    "rows": len(df),
+                    "wins": patterns['total_won'],
+                    "losses": patterns['total_lost'],
+                    "total_deals": len(df),
+                    "won_deals": patterns['total_won'],
+                    "lost_deals": patterns['total_lost'],
+                    "positive_patterns": {
+                        "ape_codes": len(patterns['positive_patterns'].get('ape_distribution', {})),
+                        "regions": len(patterns['positive_patterns'].get('region_distribution', {})),
+                        "sizes": len(patterns['positive_patterns'].get('size_distribution', {})),
+                        "legal_forms": len(patterns['positive_patterns'].get('legal_form_distribution', {})),
+                        "age_ranges": len(patterns['positive_patterns'].get('age_distribution', {}))
+                    },
+                    "negative_patterns": {
+                        "ape_codes": len(patterns['negative_patterns'].get('ape_distribution', {})),
+                        "regions": len(patterns['negative_patterns'].get('region_distribution', {})),
+                        "sizes": len(patterns['negative_patterns'].get('size_distribution', {})),
+                        "legal_forms": len(patterns['negative_patterns'].get('legal_form_distribution', {})),
+                        "age_ranges": len(patterns['negative_patterns'].get('age_distribution', {}))
+                    }
+                },
+                "model_version": f"{req.tenant_id}-v1-simple",
+                "discovered_leads": [],
+                "message": f"Model trained successfully, but auto-discovery failed: {str(e)}"
+            }
         
     except Exception as e:
         print(f"[ERROR] Training error: {e}")
