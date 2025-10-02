@@ -19,7 +19,7 @@ def main():
     port = os.environ.get('PORT', '8000')
     subprocess.run([
         sys.executable, '-m', 'uvicorn', 
-        'app-simple-test:app', 
+        'app-sirene:app', 
         '--host', '0.0.0.0', 
         '--port', port
     ], check=True)

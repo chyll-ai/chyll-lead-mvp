@@ -3,18 +3,18 @@ import { postEdge } from "../lib/api";
 import { toCSV } from "../lib/csv";
 
 type Company = {
-  company_name: string;
-  website: string;
+  company_id: string;
+  name: string;
+  siren: string;
   ape: string;
   region: string;
-  created_year: string;
-  headcount: string;
-  score: number;
+  department: string;
+  win_score: number;
   band: string;
-  confidence: string;
-  similar_past_wins: string[];
-  why: string[];
-  web_footprint: string;
+  confidence_badge: string;
+  neighbors: Array<{name: string, sim: number, outcome: string}>;
+  reasons: string[];
+  source: string;
 };
 
 const Discover: React.FC = () => {
@@ -38,7 +38,7 @@ const Discover: React.FC = () => {
       const response = await postEdge("/discover", payload);
       
       if (response.ok) {
-        setCompanies(response.companies || []);
+        setCompanies(response.items || []);
       } else {
         setError(response.error || "Discovery failed");
       }
@@ -51,7 +51,7 @@ const Discover: React.FC = () => {
 
   const download = () => {
     if (!companies.length) return;
-    const cols = ["company_name", "website", "ape", "region", "score", "band", "confidence", "web_footprint"];
+    const cols = ["name", "siren", "ape", "region", "department", "win_score", "band", "confidence_badge", "source"];
     const csv = toCSV(companies, cols);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -122,25 +122,26 @@ const Discover: React.FC = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Website</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SIREN</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">APE</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Region</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Band</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Web Footprint</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Why</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Similar Wins</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Confidence</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Similar Companies</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {companies.map((company, i) => (
                     <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{company.company_name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.website}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{company.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.siren}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.ape}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.region}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{company.score.toFixed(3)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.department}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{company.win_score.toFixed(3)}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           company.band === 'High' ? 'bg-green-100 text-green-800' :
@@ -150,14 +151,9 @@ const Discover: React.FC = () => {
                           {company.band}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                          {company.web_footprint}
-                        </span>
-                      </td>
                       <td className="px-6 py-4 text-sm text-gray-500 max-w-xs">
                         <div className="flex flex-wrap gap-1">
-                          {(company.why || []).slice(0, 3).map((reason, idx) => (
+                          {(company.reasons || []).slice(0, 3).map((reason, idx) => (
                             <span key={idx} className="inline-flex px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
                               {reason}
                             </span>
@@ -165,13 +161,19 @@ const Discover: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500 max-w-xs">
-                        {(company.similar_past_wins || []).slice(0, 2).map((win, idx) => (
+                        {(company.neighbors || []).slice(0, 2).map((neighbor, idx) => (
                           <div key={idx} className="text-xs">
-                            {win}
+                            {neighbor.name} ({neighbor.outcome}) - {neighbor.sim.toFixed(2)}
                           </div>
                         ))}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.confidence}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          company.source === 'sirene' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {company.source}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
