@@ -100,23 +100,32 @@ class ScoreRequest(BaseModel):
 
 # ---- SIRENE API Functions
 def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
-    """Fetch companies from SIRENE API"""
+    """Fetch companies from SIRENE API according to v3.11 documentation"""
     if not SIRENE_TOKEN:
         print("Warning: SIRENE_TOKEN not set, using demo data")
         return []
     
     try:
+        # Use proper SIRENE API v3.11 parameters
+        params = {
+            "q": query,
+            "nombre": min(rows, 1000),  # Max 1000 per request
+            "debut": 1,
+            "tri": "siren"
+        }
+        
         if HTTPX_AVAILABLE and HTTP:
             headers = {"Authorization": f"Bearer {SIRENE_TOKEN}"}
-            url = f"{SIRENE_BASE}?q={query}&nombre={rows}"
+            url = f"{SIRENE_BASE}"
             
-            response = HTTP.get(url, headers=headers)
+            response = HTTP.get(url, headers=headers, params=params)
             response.raise_for_status()
             data = response.json()
         else:
             # Fallback to urllib
             headers = {"Authorization": f"Bearer {SIRENE_TOKEN}"}
-            url = f"{SIRENE_BASE}?q={query}&nombre={rows}"
+            query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+            url = f"{SIRENE_BASE}?{query_string}"
             
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req) as response:
@@ -133,13 +142,21 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
                 created = period.get("dateCreationUniteLegale", "")
                 created_year = int(created[:4]) if created[:4].isdigit() else None
                 
+                # Extract region and department from address if available
+                region = ""
+                department = ""
+                if "adresseEtablissement" in unit:
+                    addr = unit["adresseEtablissement"]
+                    region = addr.get("codeRegion", "")
+                    department = addr.get("codeDepartement", "")
+                
                 companies.append({
                     "company_name": name,
                     "siren": siren,
                     "ape": ape,
                     "created_year": created_year,
-                    "region": "",
-                    "department": "",
+                    "region": region,
+                    "department": department,
                     "active": True
                 })
         
@@ -150,20 +167,41 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
         return []
 
 def sirene_query_from_filters(f: DiscoverFilters):
-    """Build SIRENE query from filters"""
-    clauses = ["etatAdministratifUniteLegale:A"]  # Active companies only
+    """Build SIRENE query from filters according to SIRENE API v3.11 documentation"""
+    clauses = []
+    
+    # Always filter for active companies
+    clauses.append("etatAdministratifUniteLegale:A")
     
     if f.ape_codes:
-        ape_or = " OR ".join([f"activitePrincipaleUniteLegale:{a}" for a in f.ape_codes])
-        clauses.append(f"({ape_or})")
+        # Use proper SIRENE query format for APE codes
+        ape_conditions = []
+        for ape in f.ape_codes:
+            ape_conditions.append(f"activitePrincipaleUniteLegale:{ape}")
+        if len(ape_conditions) > 1:
+            clauses.append(f"({' OR '.join(ape_conditions)})")
+        else:
+            clauses.append(ape_conditions[0])
     
     if f.regions:
-        reg_or = " OR ".join([f"codeRegion:{r}" for r in f.regions])
-        clauses.append(f"({reg_or})")
+        # Use proper region code format
+        reg_conditions = []
+        for region in f.regions:
+            reg_conditions.append(f"codeRegion:{region}")
+        if len(reg_conditions) > 1:
+            clauses.append(f"({' OR '.join(reg_conditions)})")
+        else:
+            clauses.append(reg_conditions[0])
     
     if f.departments:
-        dep_or = " OR ".join([f"codeDepartement:{d}" for d in f.departments])
-        clauses.append(f"({dep_or})")
+        # Use proper department code format
+        dep_conditions = []
+        for dept in f.departments:
+            dep_conditions.append(f"codeDepartement:{dept}")
+        if len(dep_conditions) > 1:
+            clauses.append(f"({' OR '.join(dep_conditions)})")
+        else:
+            clauses.append(dep_conditions[0])
     
     return " AND ".join(clauses)
 
@@ -263,6 +301,16 @@ def discover(req: DiscoverRequest):
             if query:
                 companies = sirene_fetch_api(query, rows=1000, cap=limit)
                 sirene_used = "api"
+                # If SIRENE API returns empty, fall back to demo data
+                if not companies:
+                    companies = [
+                        {"company_name":"GENERATIVSCHOOL","siren":"938422896","ape":"8559B","region":"11","department":"75","created_year":2024},
+                        {"company_name":"EDU LAB FR","siren":"111222333","ape":"8559B","region":"11","department":"92","created_year":2019},
+                        {"company_name":"QUIET SCHOOL","siren":"444555666","ape":"8559A","region":"11","department":"94","created_year":2016},
+                        {"company_name":"TECH STARTUP","siren":"777888999","ape":"6201Z","region":"11","department":"75","created_year":2023},
+                        {"company_name":"INNOVATION CORP","siren":"123456789","ape":"6202A","region":"11","department":"92","created_year":2020},
+                    ]
+                    sirene_used = "demo_fallback"
             else:
                 companies = []
                 sirene_used = "no_query"
