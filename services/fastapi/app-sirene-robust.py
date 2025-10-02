@@ -490,6 +490,75 @@ def build_smart_sirene_query(historical_data: List[HistoryRow]) -> str:
     """Build smart SIRENE query based on advanced deal pattern analysis"""
     return build_safe_sirene_query(historical_data)  # Use safe version
 
+def build_smart_sirene_query_from_filters(filters: DiscoverFilters, tenant: str) -> str:
+    """Build smart SIRENE query from user filters and training patterns"""
+    query_parts = ["etatAdministratifUniteLegale:A"]  # Always active companies
+    
+    # Get training patterns if available
+    training_patterns = None
+    if tenant in ARTIFACTS:
+        training_patterns = ARTIFACTS[tenant].get("won_deals_patterns", {})
+    
+    # 1. APE Code Filtering (Industry Intelligence)
+    if filters.ape_codes and len(filters.ape_codes) > 0:
+        if len(filters.ape_codes) == 1:
+            query_parts.append(f"activitePrincipaleUniteLegale:{filters.ape_codes[0]}")
+        else:
+            ape_query = " OR ".join([f"activitePrincipaleUniteLegale:{ape}" for ape in filters.ape_codes[:3]])  # Limit to 3
+            query_parts.append(f"({ape_query})")
+    elif training_patterns and training_patterns.get("ape_codes"):
+        # Use training patterns if no user filters
+        top_apes = list(training_patterns["ape_codes"].keys())[:2]
+        if len(top_apes) == 1:
+            query_parts.append(f"activitePrincipaleUniteLegale:{top_apes[0]}")
+        elif len(top_apes) == 2:
+            ape_query = f"activitePrincipaleUniteLegale:{top_apes[0]} OR activitePrincipaleUniteLegale:{top_apes[1]}"
+            query_parts.append(f"({ape_query})")
+    
+    # 2. Region Filtering (Geographic Intelligence)
+    if filters.regions and len(filters.regions) > 0:
+        if len(filters.regions) == 1:
+            query_parts.append(f"codeRegion:{filters.regions[0]}")
+        else:
+            region_query = " OR ".join([f"codeRegion:{region}" for region in filters.regions[:2]])  # Limit to 2
+            query_parts.append(f"({region_query})")
+    elif training_patterns and training_patterns.get("regions"):
+        # Use training patterns if no user filters
+        top_regions = list(training_patterns["regions"].keys())[:1]
+        if top_regions:
+            query_parts.append(f"codeRegion:{top_regions[0]}")
+    
+    # 3. Department Filtering
+    if filters.departments and len(filters.departments) > 0:
+        if len(filters.departments) == 1:
+            query_parts.append(f"codeDepartement:{filters.departments[0]}")
+        else:
+            dept_query = " OR ".join([f"codeDepartement:{dept}" for dept in filters.departments[:2]])  # Limit to 2
+            query_parts.append(f"({dept_query})")
+    
+    # 4. Employee Range Filtering (from training patterns)
+    if training_patterns and training_patterns.get("employee_ranges"):
+        top_employee_range = list(training_patterns["employee_ranges"].keys())[0]
+        if top_employee_range and top_employee_range != "":
+            query_parts.append(f"trancheEffectifsUniteLegale:{top_employee_range}")
+    
+    # 5. Legal Category Filtering (from training patterns)
+    if training_patterns and training_patterns.get("legal_categories"):
+        top_legal = list(training_patterns["legal_categories"].keys())[0]
+        if top_legal and top_legal != "":
+            query_parts.append(f"categorieJuridiqueUniteLegale:{top_legal}")
+    
+    # Build final query
+    final_query = " AND ".join(query_parts)
+    
+    # Safety check: limit query length
+    if len(final_query) > 200:
+        # Fallback to simpler query
+        final_query = " AND ".join(query_parts[:3])  # Keep only first 3 parts
+    
+    print(f"Built smart query from filters: {final_query}")
+    return final_query
+
 def analyze_company_name(name: str) -> float:
     """Analyze company name for business intelligence"""
     if not name or pd.isna(name):
@@ -1666,36 +1735,15 @@ def discover(req: DiscoverRequest):
         f = req.filters or DiscoverFilters()
         limit = int(req.limit or 100)
         
-        # Fetch from SIRENE API
+        # Fetch from SIRENE API with smart querying
         if SIRENE_MODE == "api" and SIRENE_TOKEN:
-            # Get a larger sample from SIRENE API and filter client-side
-            companies = sirene_fetch_api("", rows=2000, cap=2000)  # Get more companies
-            sirene_used = "api"
+            # Build smart query based on user filters and training patterns
+            smart_query = build_smart_sirene_query_from_filters(f, tenant)
+            print(f"Smart SIRENE query for discover: {smart_query}")
             
-            # Client-side filtering based on user filters
-            if companies and f:
-                filtered_companies = []
-                for company in companies:
-                    include = True
-                    
-                    # Filter by APE codes
-                    if f.ape_codes and company.get("ape") not in f.ape_codes:
-                        include = False
-                    
-                    # Filter by regions
-                    if f.regions and company.get("region") not in f.regions:
-                        include = False
-                    
-                    # Filter by departments
-                    if f.departments and company.get("department") not in f.departments:
-                        include = False
-                    
-                    if include:
-                        filtered_companies.append(company)
-                
-                companies = filtered_companies[:limit]
-            else:
-                companies = companies[:limit]
+            # Fetch only companies that match our criteria (no client-side filtering needed)
+            companies = sirene_fetch_api(smart_query, rows=limit*2, cap=limit*2)  # Get 2x limit for quality filtering
+            sirene_used = "api"
         else:
             # Fallback demo data only if no SIRENE token
             companies = [
