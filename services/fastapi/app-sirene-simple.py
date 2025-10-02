@@ -202,9 +202,19 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
             print(f"[DEBUG] SIRENE etablissements count: {len(data.get('etablissements', []))}")
             companies = []
             
-            for etablissement in data.get('etablissements', []):
+            for i, etablissement in enumerate(data.get('etablissements', [])):
                 unite_legale = etablissement.get('uniteLegale', {})
                 adresse = etablissement.get('adresseEtablissement', {})
+                
+                # Debug first company structure
+                if i == 0:
+                    print(f"[DEBUG] First etablissement keys: {list(etablissement.keys())}")
+                    print(f"[DEBUG] uniteLegale keys: {list(unite_legale.keys())}")
+                    print(f"[DEBUG] adresseEtablissement keys: {list(adresse.keys())}")
+                    print(f"[DEBUG] Sample siren: {unite_legale.get('siren', 'MISSING')}")
+                    print(f"[DEBUG] Sample company_name: {unite_legale.get('denominationUniteLegale', 'MISSING')}")
+                    print(f"[DEBUG] Sample postal_code: {adresse.get('codePostalEtablissement', 'MISSING')}")
+                    print(f"[DEBUG] Sample city: {adresse.get('libelleCommuneEtablissement', 'MISSING')}")
                 
                 company = {
                     'siren': unite_legale.get('siren', ''),
