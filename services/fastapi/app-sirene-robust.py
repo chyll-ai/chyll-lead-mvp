@@ -375,6 +375,145 @@ def build_smart_sirene_query(historical_data: List[HistoryRow]) -> str:
     
     return " AND ".join(query_parts)
 
+def analyze_company_name(name: str) -> float:
+    """Analyze company name for business intelligence"""
+    if not name or pd.isna(name):
+        return 0.3
+    
+    name_lower = name.lower()
+    score = 0.5  # Base score
+    
+    # Tech indicators
+    tech_keywords = ["tech", "digital", "data", "soft", "system", "solution", "innovation", "intelligence", "cloud", "ai", "ml", "cyber", "smart"]
+    tech_count = sum(1 for keyword in tech_keywords if keyword in name_lower)
+    score += tech_count * 0.1
+    
+    # Business maturity indicators
+    business_suffixes = ["sas", "sarl", "sa", "ltd", "corp", "group", "holding", "international"]
+    if any(suffix in name_lower for suffix in business_suffixes):
+        score += 0.2
+    
+    # International presence
+    if any(word in name_lower for word in ["international", "global", "world", "europe", "france"]):
+        score += 0.15
+    
+    # Brand strength (name length and complexity)
+    if len(name) > 15:
+        score += 0.1  # Longer names often indicate established brands
+    
+    return min(1.0, score)
+
+def analyze_website(website: str) -> float:
+    """Analyze website for business intelligence"""
+    if not website or pd.isna(website):
+        return 0.3
+    
+    website_lower = website.lower()
+    score = 0.5  # Base score
+    
+    # Domain quality
+    if website_lower.endswith('.com'):
+        score += 0.2  # International presence
+    elif website_lower.endswith('.fr'):
+        score += 0.1  # French presence
+    
+    # Professional indicators
+    if 'www.' in website_lower:
+        score += 0.1  # Professional setup
+    
+    # Tech company indicators
+    tech_domains = ["tech", "digital", "data", "soft", "system", "solution", "innovation", "intelligence", "cloud", "ai", "ml"]
+    if any(domain in website_lower for domain in tech_domains):
+        score += 0.15
+    
+    # Subdomain analysis
+    if len(website_lower.split('.')) > 2:
+        score += 0.1  # Complex domain structure
+    
+    return min(1.0, score)
+
+def analyze_email(email: str) -> float:
+    """Analyze email for business intelligence"""
+    if not email or pd.isna(email):
+        return 0.3
+    
+    email_lower = email.lower()
+    score = 0.5  # Base score
+    
+    # Professional email patterns
+    professional_patterns = ["contact", "info", "hello", "bonjour", "ceo", "director", "manager"]
+    if any(pattern in email_lower for pattern in professional_patterns):
+        score += 0.2
+    
+    # Generic vs specific
+    if email_lower.startswith('contact@') or email_lower.startswith('info@'):
+        score += 0.1  # Professional contact
+    
+    # Domain matching (if website available)
+    if '@' in email_lower:
+        domain = email_lower.split('@')[1]
+        if domain.endswith('.com') or domain.endswith('.fr'):
+            score += 0.1
+    
+    return min(1.0, score)
+
+def analyze_geographic_intelligence(row) -> float:
+    """Analyze geographic intelligence from multiple data points"""
+    score = 0.5  # Base score
+    
+    # City analysis
+    city = str(row.get("city", "")).lower()
+    if "paris" in city:
+        score += 0.3  # Paris premium
+    elif "lyon" in city:
+        score += 0.2  # Lyon premium
+    elif any(city_name in city for city_name in ["marseille", "toulouse", "nice", "nantes"]):
+        score += 0.1  # Major cities
+    
+    # Postal code analysis
+    postal_code = str(row.get("postal_code", ""))
+    if postal_code:
+        first_two = postal_code[:2]
+        if first_two in ["75", "92", "93", "94"]:  # Paris and inner suburbs
+            score += 0.2
+        elif first_two in ["77", "78", "91", "95"]:  # Outer Paris region
+            score += 0.1
+    
+    return min(1.0, score)
+
+def get_business_district_score(row) -> float:
+    """Score based on business district location"""
+    city = str(row.get("city", "")).lower()
+    postal_code = str(row.get("postal_code", ""))
+    
+    # Paris business districts
+    if "paris" in city and postal_code:
+        arrondissement = postal_code[2:] if len(postal_code) >= 4 else ""
+        
+        # Premium business districts
+        premium_districts = ["75001", "75002", "75008", "75009", "75016", "75017"]
+        if postal_code in premium_districts:
+            return 0.9
+        
+        # Good business districts
+        good_districts = ["75003", "75004", "75011", "75012", "75015"]
+        if postal_code in good_districts:
+            return 0.7
+        
+        # Other Paris districts
+        if postal_code.startswith("75"):
+            return 0.6
+    
+    # Lyon business districts
+    if "lyon" in city:
+        return 0.7
+    
+    # Other major cities
+    if any(city_name in city for city_name in ["marseille", "toulouse", "nice", "nantes"]):
+        return 0.5
+    
+    return 0.3  # Default score
+
 def simple_similarity(text1: str, text2: str) -> float:
     """Simple text similarity based on common words"""
     try:
@@ -436,6 +575,13 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     df["growth_stage"] = df["age_years"].apply(get_growth_stage_score)
     df["stability_score"] = df["age_years"].apply(get_stability_score)
     df["deal_readiness"] = df.apply(lambda row: calculate_deal_readiness(row), axis=1)
+    
+    # Enhanced data points
+    df["company_name_intelligence"] = df["company_name"].apply(analyze_company_name)
+    df["website_intelligence"] = df.get("website", "").apply(analyze_website)
+    df["email_intelligence"] = df.get("email", "").apply(analyze_email)
+    df["geographic_intelligence"] = df.apply(lambda row: analyze_geographic_intelligence(row), axis=1)
+    df["business_district_score"] = df.apply(lambda row: get_business_district_score(row), axis=1)
     
     return df
 
@@ -779,17 +925,27 @@ def train(req: TrainRequest):
                         deal_readiness_score = df_sample.iloc[i].get("deal_readiness", 0.3)
                         company_size_score = df_sample.iloc[i].get("company_size_indicator", 0.3)
                         
-                        # Calculate weighted composite score focused on closability
+                        # Enhanced data points
+                        company_name_score = df_sample.iloc[i].get("company_name_intelligence", 0.3)
+                        website_score = df_sample.iloc[i].get("website_intelligence", 0.3)
+                        email_score = df_sample.iloc[i].get("email_intelligence", 0.3)
+                        geographic_intelligence_score = df_sample.iloc[i].get("geographic_intelligence", 0.3)
+                        business_district_score = df_sample.iloc[i].get("business_district_score", 0.3)
+                        
+                        # Calculate weighted composite score with enhanced data points
                         p = (
-                            0.20 * ml_base_score +           # ML prediction (20%)
-                            0.15 * industry_score +          # Industry relevance (15%)
-                            0.15 * deal_readiness_score +    # Deal readiness (15%)
-                            0.12 * growth_stage_score +      # Growth stage (12%)
-                            0.12 * stability_score +         # Company stability (12%)
-                            0.10 * geographic_score +        # Geographic intelligence (10%)
-                            0.08 * company_size_score +      # Company size (8%)
-                            0.05 * data_quality_score +      # Data completeness (5%)
-                            0.03 * avg_similarity            # Historical similarity (3%)
+                            0.18 * ml_base_score +                    # ML prediction (18%)
+                            0.12 * industry_score +                   # Industry relevance (12%)
+                            0.12 * deal_readiness_score +             # Deal readiness (12%)
+                            0.10 * growth_stage_score +               # Growth stage (10%)
+                            0.10 * stability_score +                  # Company stability (10%)
+                            0.08 * company_name_score +               # Company name intelligence (8%)
+                            0.08 * business_district_score +          # Business district (8%)
+                            0.07 * geographic_intelligence_score +    # Geographic intelligence (7%)
+                            0.06 * website_score +                    # Website intelligence (6%)
+                            0.05 * company_size_score +               # Company size (5%)
+                            0.03 * email_score +                      # Email intelligence (3%)
+                            0.01 * avg_similarity                     # Historical similarity (1%)
                         )
                         
                         # Apply realistic bounds (not too optimistic)
@@ -853,6 +1009,23 @@ def train(req: TrainRequest):
                         # Stability indicators
                         if stability_score > 0.8:
                             reasons.append("Stable company")
+                        
+                        # Enhanced data point indicators
+                        if company_name_score > 0.7:
+                            reasons.append("Strong brand")
+                        elif company_name_score > 0.5:
+                            reasons.append("Professional name")
+                        
+                        if business_district_score > 0.8:
+                            reasons.append("Prime location")
+                        elif business_district_score > 0.6:
+                            reasons.append("Good district")
+                        
+                        if website_score > 0.7:
+                            reasons.append("Professional website")
+                        
+                        if email_score > 0.7:
+                            reasons.append("Professional contact")
                         
                         # Fallback reasons if none generated
                         if not reasons:
