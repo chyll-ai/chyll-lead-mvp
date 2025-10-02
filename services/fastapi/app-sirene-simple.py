@@ -216,17 +216,48 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
                     print(f"[DEBUG] Sample postal_code: {adresse.get('codePostalEtablissement', 'MISSING')}")
                     print(f"[DEBUG] Sample city: {adresse.get('libelleCommuneEtablissement', 'MISSING')}")
                 
+                # Extract all available data from SIRENE response
                 company = {
-                    'siren': unite_legale.get('siren', ''),
+                    'siren': etablissement.get('siren', ''),  # siren is at establishment level
                     'siret': etablissement.get('siret', ''),
-                    'company_name': unite_legale.get('denominationUniteLegale', ''),
+                    'company_name': unite_legale.get('denominationUniteLegale') or 
+                                   unite_legale.get('denominationUsuelle1UniteLegale') or 
+                                   unite_legale.get('nomUniteLegale') or 
+                                   unite_legale.get('sigleUniteLegale') or '',
                     'ape': unite_legale.get('activitePrincipaleUniteLegale', ''),
                     'legal_form': unite_legale.get('categorieJuridiqueUniteLegale', ''),
                     'postal_code': adresse.get('codePostalEtablissement', ''),
                     'city': adresse.get('libelleCommuneEtablissement', ''),
                     'employee_range': unite_legale.get('trancheEffectifsUniteLegale', ''),
                     'created_year': int(unite_legale.get('dateCreationUniteLegale', '0')[:4]) if unite_legale.get('dateCreationUniteLegale') else None,
-                    'is_active': unite_legale.get('etatAdministratifUniteLegale') == 'A'
+                    'is_active': unite_legale.get('etatAdministratifUniteLegale') == 'A',
+                    # Additional fields from SIRENE
+                    'address': f"{adresse.get('numeroVoieEtablissement', '')} {adresse.get('typeVoieEtablissement', '')} {adresse.get('libelleVoieEtablissement', '')}".strip(),
+                    'complement_address': adresse.get('complementAdresseEtablissement', ''),
+                    'cedex': adresse.get('codeCedexEtablissement', ''),
+                    'cedex_label': adresse.get('libelleCedexEtablissement', ''),
+                    'commune_code': adresse.get('codeCommuneEtablissement', ''),
+                    'is_headquarters': etablissement.get('etablissementSiege', False),
+                    'establishment_activity': etablissement.get('activitePrincipaleRegistreMetiersEtablissement', ''),
+                    'establishment_employees': etablissement.get('trancheEffectifsEtablissement', ''),
+                    'establishment_creation_date': etablissement.get('dateCreationEtablissement', ''),
+                    'nic': etablissement.get('nic', ''),
+                    'diffusion_status': etablissement.get('statutDiffusionEtablissement', ''),
+                    'legal_unit_diffusion_status': unite_legale.get('statutDiffusionUniteLegale', ''),
+                    'legal_unit_creation_date': unite_legale.get('dateCreationUniteLegale', ''),
+                    'legal_unit_employees': unite_legale.get('trancheEffectifsUniteLegale', ''),
+                    'legal_unit_employees_year': unite_legale.get('anneeEffectifsUniteLegale', ''),
+                    'is_employer': unite_legale.get('caractereEmployeurUniteLegale', ''),
+                    'company_category': unite_legale.get('categorieEntreprise', ''),
+                    'company_category_year': unite_legale.get('anneeCategorieEntreprise', ''),
+                    'social_economy': unite_legale.get('economieSocialeSolidaireUniteLegale', ''),
+                    'mission_company': unite_legale.get('societeMissionUniteLegale', ''),
+                    'association_id': unite_legale.get('identifiantAssociationUniteLegale', ''),
+                    'nomenclature_activity': unite_legale.get('nomenclatureActivitePrincipaleUniteLegale', ''),
+                    'headquarters_nic': unite_legale.get('nicSiegeUniteLegale', ''),
+                    'last_processing_date': unite_legale.get('dateDernierTraitementUniteLegale', ''),
+                    'establishment_last_processing_date': etablissement.get('dateDernierTraitementEtablissement', ''),
+                    'periods_count': etablissement.get('nombrePeriodesEtablissement', 0)
                 }
                 companies.append(company)
             
