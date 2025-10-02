@@ -281,47 +281,47 @@ def score_company(company: Dict[str, Any], patterns: Dict[str, Any]) -> float:
     pos_patterns = patterns.get('positive_patterns', {})
     neg_patterns = patterns.get('negative_patterns', {})
     
-    # APE code scoring (50% weight - most important)
+    # APE code scoring (40% weight - most important)
     ape = company.get('ape', '')
     if ape in pos_patterns.get('ape_distribution', {}):
         ape_freq = pos_patterns['ape_distribution'][ape]
-        positive_score += 0.5 * ape_freq
-        total_weight += 0.5
+        positive_score += 0.4 * ape_freq
+        total_weight += 0.4
     if ape in neg_patterns.get('ape_distribution', {}):
         ape_freq = neg_patterns['ape_distribution'][ape]
-        negative_score += 0.5 * ape_freq
+        negative_score += 0.4 * ape_freq
     
-    # Region scoring (30% weight)
+    # Region scoring (25% weight)
     postal_code = company.get('postal_code', '')
     if len(postal_code) >= 2:
         region = postal_code[:2]
         if region in pos_patterns.get('region_distribution', {}):
             region_freq = pos_patterns['region_distribution'][region]
-            positive_score += 0.3 * region_freq
-            total_weight += 0.3
+            positive_score += 0.25 * region_freq
+            total_weight += 0.25
         if region in neg_patterns.get('region_distribution', {}):
             region_freq = neg_patterns['region_distribution'][region]
             negative_score += 0.3 * region_freq
     
-    # Company size scoring (15% weight)
+    # Company size scoring (20% weight)
     employee_range = company.get('employee_range', '')
     if employee_range in pos_patterns.get('size_distribution', {}):
         size_freq = pos_patterns['size_distribution'][employee_range]
-        positive_score += 0.15 * size_freq
-        total_weight += 0.15
+        positive_score += 0.2 * size_freq
+        total_weight += 0.2
     if employee_range in neg_patterns.get('size_distribution', {}):
         size_freq = neg_patterns['size_distribution'][employee_range]
-        negative_score += 0.15 * size_freq
+        negative_score += 0.2 * size_freq
     
-    # Legal form scoring (5% weight)
+    # Legal form scoring (15% weight)
     legal_form = company.get('legal_form', '')
     if legal_form in pos_patterns.get('legal_form_distribution', {}):
         legal_freq = pos_patterns['legal_form_distribution'][legal_form]
-        positive_score += 0.05 * legal_freq
-        total_weight += 0.05
+        positive_score += 0.15 * legal_freq
+        total_weight += 0.15
     if legal_form in neg_patterns.get('legal_form_distribution', {}):
         legal_freq = neg_patterns['legal_form_distribution'][legal_form]
-        negative_score += 0.05 * legal_freq
+        negative_score += 0.15 * legal_freq
     
     # Calculate final score: positive patterns boost, negative patterns reduce
     if total_weight > 0:
@@ -335,7 +335,7 @@ def score_company(company: Dict[str, Any], patterns: Dict[str, Any]) -> float:
     
     return final_score
 
-def build_sirene_filters(patterns: Dict[str, Any], min_frequency: float = 0.1) -> Dict[str, Any]:
+def build_sirene_filters(patterns: Dict[str, Any], min_frequency: float = 0.01) -> Dict[str, Any]:
     """Build SIRENE filters using only the strongest positive patterns (high win probability)"""
     filters = {
         'etatAdministratifUniteLegale': 'A'  # Active companies only
@@ -837,7 +837,16 @@ async def discover(req: DiscoverRequest):
             siren = company.get("siren", "N/A")
             ape = company.get("ape", "N/A")
             region = company.get("region", "N/A")
-            location = company.get("location", "N/A")
+            
+            # Build location from city and postal_code
+            city = company.get("city", "")
+            postal_code = company.get("postal_code", "")
+            if postal_code:
+                location = f"{city}, {postal_code}" if city else postal_code
+            elif city:
+                location = city
+            else:
+                location = "N/A"
             
             # Employee range mapping
             headcount_codes = {
@@ -900,7 +909,7 @@ async def discover(req: DiscoverRequest):
                 "categorieJuridiqueUniteLegale": company.get("legal_form", "N/A"),
                 "activitePrincipaleUniteLegale": ape,
                 "categorieEntreprise": company_category,
-                "trancheEffectifsUniteLegale": employee_range,
+                "trancheEffectifsUniteLegale": headcount_label,
                 "anneeEffectifsUniteLegale": company.get("legal_unit_employees_year", "N/A"),
                 "companySizeLabel": company_size_label,
                 "etatAdministratifUniteLegale": company.get("is_active", False) and "A" or "I",
