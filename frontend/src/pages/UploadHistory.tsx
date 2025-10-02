@@ -22,7 +22,12 @@ const UploadHistory: React.FC = () => {
     setLogs("Training...");
     try {
       const res = await postEdge("/train", { tenant_id: "dev-tenant", rows });
-      setLogs(`OK: rows=${res.stats?.rows} wins=${res.stats?.wins} losses=${res.stats?.losses}`);
+      console.log("Training response:", res); // Debug log
+      if (res.ok && res.stats) {
+        setLogs(`OK: rows=${res.stats.rows} wins=${res.stats.wins} losses=${res.stats.losses}`);
+      } else {
+        setLogs(`Error: ${res.error || 'Unknown error'}`);
+      }
     } catch (e:any) {
       setLogs(`Error: ${e.message}`);
     }
