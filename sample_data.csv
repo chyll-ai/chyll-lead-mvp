@@ -1,6 +1,21 @@
-company_name,deal_status,website,ape,created_year
-TechCorp France,won,techcorp.fr,6201Z,2020
-Innovate SAS,won,innovate-sas.com,6202A,2019
-Digital Solutions,lost,digitalsolutions.fr,6203Z,2021
-Future Systems,won,futuresystems.com,6201Z,2018
-Smart Analytics,lost,smartanalytics.fr,6202A,2022
+company_name,deal_status,postal_address,postal_code,city,website,siren,email
+Dassault Systèmes,won,Velizy-Villacoublay,78140,Vélizy-Villacoublay,https://www.3ds.com,,contact@3ds.com
+Cegid,won,Lyon 9e,69009,Lyon,https://www.cegid.com,,contact@cegid.com
+Sopra Steria,lost,Paris 17e,75017,Paris,https://www.soprasteria.com,,contact.fr@soprasteria.com
+Capgemini,lost,Paris 17e,75017,Paris,https://www.capgemini.com,,contact.fr@capgemini.com
+Murex,won,Paris 15e,75015,Paris,https://www.murex.com,,info@murex.com
+Ivalua,won,Massy,91300,Massy,https://www.ivalua.com,,contact@ivalua.com
+Mirakl,won,Paris 10e,75010,Paris,https://www.mirakl.com,,contact@mirakl.com
+Dataiku,won,Paris 2e,75002,Paris,https://www.dataiku.com,,contact@dataiku.com
+Algolia,won,Paris 9e,75009,Paris,https://www.algolia.com,,contact@algolia.com
+OVHcloud,lost,Roubaix,59100,Roubaix,https://www.ovhcloud.com,,contact@ovhcloud.com
+Doctolib,won,Paris 9e,75009,Paris,https://www.doctolib.fr,,hello@doctolib.com
+Contentsquare,won,Paris 2e,75002,Paris,https://contentsquare.com,,contact@contentsquare.com
+Talend,lost,Suresnes,92150,Suresnes,https://www.talend.com,,contact@talend.com
+Ubisoft,lost,Montreuil,93100,Montreuil,https://www.ubisoft.com,,contact@ubisoft.com
+PayFit,won,Paris 19e,75019,Paris,https://payfit.com,,contact@payfit.com
+Wallix,won,Paris 8e,75008,Paris,https://www.wallix.com,,contact@wallix.com
+Shift Technology,won,Paris 9e,75009,Paris,https://www.shift-technology.com,,contact@shift-technology.com
+Qonto,lost,Paris 12e,75012,Paris,https://qonto.com,,contact@qonto.com
+Pigment,won,Paris 9e,75009,Paris,https://www.gopigment.com,,hello@gopigment.com
+Kyriba,won,Paris 8e,75008,Paris,https://www.kyriba.com,,contact@kyriba.com

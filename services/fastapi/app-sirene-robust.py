@@ -200,12 +200,23 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     # Enhanced features for smart scoring
     df["ape_category"] = df.get("ape", "").str[:2].astype(str)
     df["industry_score"] = df["ape_category"].map(get_industry_score)
-    df["region_score"] = df.get("region", "").map(get_region_score)
+    
+    # Geographic intelligence from postal codes and cities
+    df["postal_code"] = df.get("postal_code", "").astype(str)
+    df["city"] = df.get("city", "").astype(str)
+    df["region"] = df["postal_code"].apply(extract_region_from_postal_code)
+    df["region_score"] = df["region"].map(get_region_score)
+    df["city_score"] = df.apply(lambda row: get_city_score(row.get("city", ""), row.get("postal_code", "")), axis=1)
+    
+    # Use the higher of region or city score for geographic intelligence
+    df["geographic_score"] = df[["region_score", "city_score"]].max(axis=1)
+    
     df["age_category"] = pd.cut(df["age_years"], bins=[0, 2, 5, 10, 100], labels=["startup", "growth", "mature", "established"])
     df["maturity_score"] = df["age_category"].map({"startup": 0.3, "growth": 0.8, "mature": 0.9, "established": 0.7})
     df["data_quality"] = (df["has_siren"].astype(int) + 
                          df["ape"].notna().astype(int) + 
-                         df["region"].notna().astype(int)) / 3.0
+                         df["postal_code"].notna().astype(int) +
+                         df["city"].notna().astype(int)) / 4.0
     
     return df
 
@@ -242,6 +253,131 @@ def get_region_score(region: str) -> float:
         "44": 0.5,  # Loire-Atlantique (Nantes)
     }
     return region_scores.get(region, 0.4)  # Default score for other regions
+
+def extract_region_from_postal_code(postal_code: str) -> str:
+    """Extract region code from French postal code"""
+    if not postal_code or len(str(postal_code)) < 2:
+        return ""
+    
+    postal_str = str(postal_code).zfill(5)
+    first_two = postal_str[:2]
+    
+    # Map postal code prefixes to region codes
+    postal_to_region = {
+        "75": "75",  # Paris
+        "77": "11",  # Seine-et-Marne (Île-de-France)
+        "78": "11",  # Yvelines (Île-de-France)
+        "91": "11",  # Essonne (Île-de-France)
+        "92": "92",  # Hauts-de-Seine
+        "93": "93",  # Seine-Saint-Denis
+        "94": "94",  # Val-de-Marne
+        "95": "11",  # Val-d'Oise (Île-de-France)
+        "69": "69",  # Rhône (Lyon)
+        "13": "13",  # Bouches-du-Rhône (Marseille)
+        "31": "31",  # Haute-Garonne (Toulouse)
+        "59": "59",  # Nord (Lille)
+        "44": "44",  # Loire-Atlantique (Nantes)
+        "67": "44",  # Bas-Rhin (Alsace)
+        "68": "44",  # Haut-Rhin (Alsace)
+    }
+    
+    return postal_to_region.get(first_two, "")
+
+def get_city_score(city: str, postal_code: str) -> float:
+    """City-specific scoring based on economic importance"""
+    city_scores = {
+        "Paris": 0.95,
+        "Lyon": 0.85,
+        "Marseille": 0.75,
+        "Toulouse": 0.75,
+        "Nice": 0.70,
+        "Nantes": 0.70,
+        "Strasbourg": 0.70,
+        "Montpellier": 0.65,
+        "Bordeaux": 0.65,
+        "Lille": 0.65,
+        "Rennes": 0.60,
+        "Reims": 0.55,
+        "Saint-Étienne": 0.55,
+        "Toulon": 0.55,
+        "Le Havre": 0.50,
+        "Grenoble": 0.50,
+        "Dijon": 0.50,
+        "Angers": 0.50,
+        "Nîmes": 0.45,
+        "Villeurbanne": 0.45,
+        "Saint-Denis": 0.45,
+        "Le Mans": 0.45,
+        "Aix-en-Provence": 0.45,
+        "Clermont-Ferrand": 0.45,
+        "Brest": 0.45,
+        "Tours": 0.45,
+        "Limoges": 0.45,
+        "Amiens": 0.45,
+        "Annecy": 0.45,
+        "Perpignan": 0.45,
+        "Boulogne-Billancourt": 0.80,
+        "Saint-Denis": 0.70,
+        "Argenteuil": 0.60,
+        "Montreuil": 0.60,
+        "Roubaix": 0.60,
+        "Tourcoing": 0.60,
+        "Nanterre": 0.70,
+        "Avignon": 0.50,
+        "Créteil": 0.60,
+        "Dunkirk": 0.50,
+        "Poitiers": 0.50,
+        "Asnières-sur-Seine": 0.70,
+        "Versailles": 0.75,
+        "Courbevoie": 0.75,
+        "Vitry-sur-Seine": 0.60,
+        "Colombes": 0.70,
+        "Aulnay-sous-Bois": 0.60,
+        "La Rochelle": 0.55,
+        "Champigny-sur-Marne": 0.60,
+        "Rueil-Malmaison": 0.75,
+        "Antibes": 0.60,
+        "Saint-Maur-des-Fossés": 0.70,
+        "Cannes": 0.65,
+        "Le Tampon": 0.40,
+        "Aubervilliers": 0.60,
+        "Béziers": 0.45,
+        "Bourges": 0.45,
+        "Cannes": 0.65,
+        "Colmar": 0.50,
+        "Drancy": 0.60,
+        "Mérignac": 0.60,
+        "Saint-Nazaire": 0.50,
+        "Issy-les-Moulineaux": 0.75,
+        "Noisy-le-Grand": 0.60,
+        "Évry": 0.60,
+        "Cergy": 0.60,
+        "Pessac": 0.60,
+        "Vénissieux": 0.60,
+        "Clichy": 0.70,
+        "Ivry-sur-Seine": 0.60,
+        "Levallois-Perret": 0.75,
+        "Montrouge": 0.70,
+        "Neuilly-sur-Seine": 0.80,
+        "Pantin": 0.60,
+        "Suresnes": 0.70,
+        "Vélizy-Villacoublay": 0.75,
+        "Massy": 0.70,
+    }
+    
+    # Check exact city match first
+    if city in city_scores:
+        return city_scores[city]
+    
+    # Check partial matches for common variations
+    city_lower = city.lower()
+    for city_key, score in city_scores.items():
+        if city_key.lower() in city_lower or city_lower in city_key.lower():
+            return score
+    
+    # Default scoring based on postal code region
+    region = extract_region_from_postal_code(postal_code)
+    return get_region_score(region)
 
 # ---- Routes
 @app.get("/health")
@@ -327,16 +463,16 @@ def train(req: TrainRequest):
                         
                         # Apply smart multipliers
                         industry_multiplier = df_sample.iloc[i].get("industry_score", 0.5)
-                        region_multiplier = df_sample.iloc[i].get("region_score", 0.5)
+                        geographic_multiplier = df_sample.iloc[i].get("geographic_score", 0.5)
                         maturity_multiplier = df_sample.iloc[i].get("maturity_score", 0.5)
                         data_quality_multiplier = df_sample.iloc[i].get("data_quality", 0.5)
                         
                         # Calculate enhanced score
                         p = base_score * (
                             0.4 * industry_multiplier + 
-                            0.2 * region_multiplier + 
+                            0.25 * geographic_multiplier + 
                             0.2 * maturity_multiplier + 
-                            0.2 * data_quality_multiplier
+                            0.15 * data_quality_multiplier
                         )
                         
                         # Add similarity boost
@@ -350,6 +486,10 @@ def train(req: TrainRequest):
                         if pd.notna(df_sample.iloc[i]["age_years"]):
                             age = int(df_sample.iloc[i]["age_years"])
                             reasons.append(f"Age {age} years")
+                        if df_sample.iloc[i].get("city"):
+                            city = df_sample.iloc[i]["city"]
+                            postal_code = df_sample.iloc[i].get("postal_code", "")
+                            reasons.append(f"{city} ({postal_code})")
                         if df_sample.iloc[i].get("region"):
                             reasons.append(f"Region {df_sample.iloc[i]['region']}")
                         if avg_similarity > 0.1:
@@ -362,6 +502,8 @@ def train(req: TrainRequest):
                             "ape": df_sample.iloc[i].get("ape",""),
                             "region": df_sample.iloc[i].get("region",""),
                             "department": df_sample.iloc[i].get("department",""),
+                            "city": df_sample.iloc[i].get("city",""),
+                            "postal_code": df_sample.iloc[i].get("postal_code",""),
                             "win_score": round(p, 3), 
                             "band": band,
                             "confidence_badge": "Verified (SIREN)" if int(df_sample.iloc[i]["has_siren"]) else "High-confidence",
