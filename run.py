@@ -7,19 +7,19 @@ import sys
 import subprocess
 
 def main():
+    # Install dependencies from root directory
+    print("Installing dependencies...")
+    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements-production.txt'], check=True)
+    
     # Change to the FastAPI directory
     os.chdir('services/fastapi')
-    
-    # Install dependencies
-    print("Installing dependencies...")
-    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', '../requirements.txt'], check=True)
     
     # Start the server
     print("Starting FastAPI server...")
     port = os.environ.get('PORT', '8000')
     subprocess.run([
         sys.executable, '-m', 'uvicorn', 
-        'app-lightweight:app', 
+        'app-production:app', 
         '--host', '0.0.0.0', 
         '--port', port
     ], check=True)

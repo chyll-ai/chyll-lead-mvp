@@ -21,22 +21,20 @@ if ! railway whoami &> /dev/null; then
     exit 1
 fi
 
-echo "📝 Manual setup required:"
-echo ""
-echo "1. Create a new project on Railway:"
-echo "   - Go to https://railway.app/dashboard"
-echo "   - Click 'New Project'"
-echo "   - Choose 'Deploy from GitHub repo'"
-echo "   - Select this repository"
-echo ""
-echo "2. Set environment variables:"
-echo "   railway variables --set 'SIRENE_TOKEN=a39ed0ac-2e48-4e0f-9ed0-ac2e48ce0ff1'"
-echo "   railway variables --set 'SIRENE_MODE=api'"
-echo "   railway variables --set 'PORT=8000'"
-echo ""
-echo "3. Deploy:"
-echo "   railway up"
-echo ""
-echo "✅ Your app will be available at the Railway URL!"
+echo "📝 Setting up Railway deployment..."
+
+# Set environment variables
+echo "Setting environment variables..."
+railway variables --set 'SIRENE_TOKEN=a39ed0ac-2e48-4e0f-9ed0-ac2e48ce0ff1'
+railway variables --set 'SIRENE_MODE=api'
+railway variables --set 'PORT=8000'
+railway variables --set 'PYTHON_VERSION=3.11'
+
+# Deploy the application
+echo "🚀 Deploying to Railway..."
+railway up
+
+echo "✅ Deployment complete!"
+echo "🌐 Your app will be available at the Railway URL!"
 echo "🔍 Check logs with: railway logs"
 echo "📊 Monitor with: railway status"
