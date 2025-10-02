@@ -106,9 +106,14 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
         return []
     
     try:
+        # Sanitize query to prevent API errors
+        safe_query = sanitize_sirene_query(query)
+        print(f"Original query: {query}")
+        print(f"Safe query: {safe_query}")
+        
         # Use proper SIRENE API v3.11 parameters
         params = {
-            "q": query,
+            "q": safe_query,
             "nombre": min(rows, 1000),  # Max 1000 per request
             "debut": 1,
             "tri": "siren"
@@ -121,6 +126,21 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
             url = f"{SIRENE_BASE}"
             
             response = HTTP.get(url, headers=headers, params=params)
+            
+            # Check for API errors
+            if response.status_code == 400:
+                print(f"SIRENE API 400 error: {response.text}")
+                return []
+            elif response.status_code == 401:
+                print("SIRENE API 401 error: Invalid token")
+                return []
+            elif response.status_code == 429:
+                print("SIRENE API 429 error: Rate limit exceeded")
+                return []
+            elif response.status_code != 200:
+                print(f"SIRENE API error {response.status_code}: {response.text}")
+                return []
+            
             response.raise_for_status()
             data = response.json()
         else:
@@ -131,6 +151,9 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
             
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req) as response:
+                if response.status != 200:
+                    print(f"SIRENE API error {response.status}")
+                    return []
                 data = json.loads(response.read().decode())
         
         # Process companies from API response (works for both httpx and urllib)
@@ -177,6 +200,27 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
     except Exception as e:
         print(f"SIRENE API error: {e}")
         return []
+
+def sanitize_sirene_query(query: str) -> str:
+    """Sanitize SIRENE query to prevent API errors"""
+    if not query or not query.strip():
+        return ""
+    
+    # Remove potentially problematic characters
+    safe_query = query.strip()
+    
+    # Limit query length
+    if len(safe_query) > 200:
+        safe_query = safe_query[:200]
+    
+    # Remove special characters that might break the API
+    import re
+    safe_query = re.sub(r'[^\w\s:()\-]', '', safe_query)
+    
+    # Ensure proper formatting
+    safe_query = re.sub(r'\s+', ' ', safe_query)  # Multiple spaces to single space
+    
+    return safe_query
 
 def sirene_query_from_filters(f: DiscoverFilters):
     """Build SIRENE query from filters - simplified approach"""
@@ -324,10 +368,10 @@ def find_optimal_age_range(won_ages: List[int], lost_ages: List[int]) -> str:
     else:
         return "mixed age range"
 
-def build_smart_sirene_query(historical_data: List[HistoryRow]) -> str:
-    """Build smart SIRENE query based on advanced deal pattern analysis"""
+def build_safe_sirene_query(historical_data: List[HistoryRow]) -> str:
+    """Build safe SIRENE query that won't break the API"""
     if not historical_data:
-        return "etatAdministratifUniteLegale:A"  # Just active companies
+        return ""  # Empty query for broad results
     
     # Analyze deal patterns
     analysis = analyze_deal_patterns(historical_data)
@@ -336,44 +380,64 @@ def build_smart_sirene_query(historical_data: List[HistoryRow]) -> str:
     # Extract patterns from won deals
     won_deals = [row for row in historical_data if row.deal_status == "won"]
     if not won_deals:
-        return "etatAdministratifUniteLegale:A"
+        return ""  # Empty query for broad results
     
-    # Get APE codes from won deals
+    # Get APE codes from won deals (safely)
     ape_codes = []
     regions = []
     
     for deal in won_deals:
-        if hasattr(deal, 'ape') and deal.ape:
-            ape_codes.append(deal.ape)
-        if hasattr(deal, 'postal_code') and deal.postal_code:
-            # Extract region from postal code
-            postal_str = str(deal.postal_code).zfill(5)
-            first_two = postal_str[:2]
-            if first_two in ["75", "77", "78", "91", "92", "93", "94", "95"]:
-                regions.append("11")  # Île-de-France
-            elif first_two == "69":
-                regions.append("69")  # Rhône
-            elif first_two == "13":
-                regions.append("13")  # Bouches-du-Rhône
+        # Safe APE code extraction
+        if hasattr(deal, 'ape') and deal.ape and str(deal.ape).strip():
+            ape_code = str(deal.ape).strip()
+            if len(ape_code) >= 5:  # Valid APE code length
+                ape_codes.append(ape_code)
+        
+        # Safe postal code extraction
+        if hasattr(deal, 'postal_code') and deal.postal_code and str(deal.postal_code).strip():
+            postal_str = str(deal.postal_code).strip().zfill(5)
+            if len(postal_str) == 5 and postal_str.isdigit():
+                first_two = postal_str[:2]
+                if first_two in ["75", "77", "78", "91", "92", "93", "94", "95"]:
+                    regions.append("11")  # Île-de-France
+                elif first_two == "69":
+                    regions.append("69")  # Rhône
+                elif first_two == "13":
+                    regions.append("13")  # Bouches-du-Rhône
     
-    # Build query
-    query_parts = ["etatAdministratifUniteLegale:A"]  # Active companies only
+    # Build safe query with limits
+    query_parts = []
     
-    # Add APE code filters (if we have them)
+    # Always include active companies filter
+    query_parts.append("etatAdministratifUniteLegale:A")
+    
+    # Add APE code filters (safely, max 2 codes to avoid API limits)
     if ape_codes:
-        unique_apes = list(set(ape_codes))
-        if len(unique_apes) <= 3:  # Only if we have few APE codes
-            ape_query = " OR ".join([f"activitePrincipaleUniteLegale:{ape}" for ape in unique_apes])
+        unique_apes = list(set(ape_codes))[:2]  # Limit to 2 APE codes
+        if len(unique_apes) == 1:
+            query_parts.append(f"activitePrincipaleUniteLegale:{unique_apes[0]}")
+        elif len(unique_apes) == 2:
+            ape_query = f"activitePrincipaleUniteLegale:{unique_apes[0]} OR activitePrincipaleUniteLegale:{unique_apes[1]}"
             query_parts.append(f"({ape_query})")
     
-    # Add region filters (if we have them)
+    # Add region filters (safely, max 1 region to avoid API limits)
     if regions:
-        unique_regions = list(set(regions))
-        if len(unique_regions) <= 2:  # Only if we have few regions
-            region_query = " OR ".join([f"codeRegion:{region}" for region in unique_regions])
-            query_parts.append(f"({region_query})")
+        unique_regions = list(set(regions))[:1]  # Limit to 1 region
+        if unique_regions:
+            query_parts.append(f"codeRegion:{unique_regions[0]}")
     
-    return " AND ".join(query_parts)
+    # Join with AND, but limit total query length
+    final_query = " AND ".join(query_parts)
+    
+    # Safety check: limit query length to prevent API errors
+    if len(final_query) > 200:
+        return "etatAdministratifUniteLegale:A"  # Fallback to simple query
+    
+    return final_query
+
+def build_smart_sirene_query(historical_data: List[HistoryRow]) -> str:
+    """Build smart SIRENE query based on advanced deal pattern analysis"""
+    return build_safe_sirene_query(historical_data)  # Use safe version
 
 def analyze_company_name(name: str) -> float:
     """Analyze company name for business intelligence"""
@@ -517,53 +581,76 @@ def get_business_district_score(row) -> float:
 def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     """Add 100 comprehensive data points for advanced lead scoring"""
     
-    # 1-10: Company Name Analysis (10 points)
-    df["name_length"] = df["company_name"].str.len()
-    df["name_word_count"] = df["company_name"].str.split().str.len()
-    df["name_has_tech"] = df["company_name"].str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart").astype(int)
-    df["name_has_business"] = df["company_name"].str.lower().str.contains("sas|sarl|sa|ltd|corp|group|holding|international").astype(int)
-    df["name_has_international"] = df["company_name"].str.lower().str.contains("international|global|world|europe|france").astype(int)
-    df["name_complexity"] = df["company_name"].str.count("[A-Z]") / df["name_length"]
-    df["name_has_numbers"] = df["company_name"].str.contains(r"\d").astype(int)
-    df["name_has_special_chars"] = df["company_name"].str.contains(r"[^a-zA-Z0-9\s]").astype(int)
-    df["name_starts_capital"] = df["company_name"].str[0].str.isupper().astype(int)
-    df["name_tech_score"] = df["company_name"].str.lower().str.count("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart")
+    # Ensure all required columns exist with safe defaults
+    safe_columns = {
+        "company_name": "",
+        "siren": "",
+        "ape": "",
+        "postal_code": "",
+        "city": "",
+        "website": "",
+        "email": "",
+        "created_year": None,
+        "active": True
+    }
     
-    # 11-20: SIREN Analysis (10 points)
-    df["siren_length"] = df["siren"].str.len()
-    df["siren_is_valid"] = df["siren"].str.len().ge(9).astype(int)
-    df["siren_has_leading_zeros"] = df["siren"].str.startswith("0").astype(int)
-    df["siren_checksum_valid"] = df["siren"].apply(validate_siren_checksum)
-    df["siren_age_indicator"] = df["siren"].str[:2].astype(int, errors="ignore")
-    df["siren_region_code"] = df["siren"].str[2:4]
-    df["siren_department_code"] = df["siren"].str[4:6]
-    df["siren_sequence"] = df["siren"].str[6:9]
-    df["siren_parity"] = df["siren"].str[-1].astype(int, errors="ignore") % 2
-    df["siren_establishment_count"] = df["siren"].apply(estimate_establishment_count)
+    for col, default_val in safe_columns.items():
+        if col not in df.columns:
+            df[col] = default_val
+        else:
+            # Safe type conversion
+            if df[col].dtype == 'object':
+                df[col] = df[col].fillna(default_val if isinstance(default_val, str) else "")
+            else:
+                df[col] = df[col].fillna(default_val)
     
-    # 21-30: APE Code Analysis (10 points)
-    df["ape_length"] = df["ape"].str.len()
-    df["ape_is_valid"] = df["ape"].str.len().ge(5).astype(int)
-    df["ape_category"] = df["ape"].str[:2]
-    df["ape_subcategory"] = df["ape"].str[2:4]
-    df["ape_activity"] = df["ape"].str[4:5]
-    df["ape_is_tech"] = df["ape"].str.startswith("62|63|70|71|72").astype(int)
-    df["ape_is_services"] = df["ape"].str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
-    df["ape_is_manufacturing"] = df["ape"].str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
-    df["ape_complexity"] = df["ape"].str.count("[A-Z]")
-    df["ape_numeric_part"] = df["ape"].str.extract(r"(\d+)")[0].astype(float, errors="ignore")
+    # 1-10: Company Name Analysis (10 points) - Safe string operations
+    df["name_length"] = df["company_name"].astype(str).str.len()
+    df["name_word_count"] = df["company_name"].astype(str).str.split().str.len()
+    df["name_has_tech"] = df["company_name"].astype(str).str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart", na=False).astype(int)
+    df["name_has_business"] = df["company_name"].astype(str).str.lower().str.contains("sas|sarl|sa|ltd|corp|group|holding|international", na=False).astype(int)
+    df["name_has_international"] = df["company_name"].astype(str).str.lower().str.contains("international|global|world|europe|france", na=False).astype(int)
+    df["name_complexity"] = df["company_name"].astype(str).str.count("[A-Z]") / df["name_length"].replace(0, 1)  # Avoid division by zero
+    df["name_has_numbers"] = df["company_name"].astype(str).str.contains(r"\d", na=False).astype(int)
+    df["name_has_special_chars"] = df["company_name"].astype(str).str.contains(r"[^a-zA-Z0-9\s]", na=False).astype(int)
+    df["name_starts_capital"] = df["company_name"].astype(str).str[0].str.isupper().fillna(False).astype(int)
+    df["name_tech_score"] = df["company_name"].astype(str).str.lower().str.count("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart")
     
-    # 31-40: Geographic Analysis (10 points)
-    df["postal_code_length"] = df["postal_code"].str.len()
-    df["postal_code_is_valid"] = df["postal_code"].str.len().eq(5).astype(int)
-    df["postal_code_department"] = df["postal_code"].str[:2]
-    df["postal_code_arrondissement"] = df["postal_code"].str[2:4]
-    df["postal_code_is_paris"] = df["postal_code"].str.startswith("75").astype(int)
-    df["postal_code_is_lyon"] = df["postal_code"].str.startswith("69").astype(int)
-    df["postal_code_is_major_city"] = df["postal_code"].str.startswith("75|69|13|31|59|44|67|68").astype(int)
-    df["city_length"] = df["city"].str.len()
-    df["city_has_arrondissement"] = df["city"].str.contains(r"\d+e").astype(int)
-    df["city_is_capital"] = df["city"].str.lower().str.contains("paris|lyon|marseille|toulouse|nice|nantes|strasbourg|montpellier|bordeaux|lille").astype(int)
+    # 11-20: SIREN Analysis (10 points) - Safe string operations
+    df["siren_length"] = df["siren"].astype(str).str.len()
+    df["siren_is_valid"] = df["siren"].astype(str).str.len().ge(9).astype(int)
+    df["siren_has_leading_zeros"] = df["siren"].astype(str).str.startswith("0").astype(int)
+    df["siren_checksum_valid"] = df["siren"].astype(str).apply(validate_siren_checksum)
+    df["siren_age_indicator"] = pd.to_numeric(df["siren"].astype(str).str[:2], errors="coerce").fillna(0)
+    df["siren_region_code"] = df["siren"].astype(str).str[2:4]
+    df["siren_department_code"] = df["siren"].astype(str).str[4:6]
+    df["siren_sequence"] = df["siren"].astype(str).str[6:9]
+    df["siren_parity"] = pd.to_numeric(df["siren"].astype(str).str[-1], errors="coerce").fillna(0) % 2
+    df["siren_establishment_count"] = df["siren"].astype(str).apply(estimate_establishment_count)
+    
+    # 21-30: APE Code Analysis (10 points) - Safe string operations
+    df["ape_length"] = df["ape"].astype(str).str.len()
+    df["ape_is_valid"] = df["ape"].astype(str).str.len().ge(5).astype(int)
+    df["ape_category"] = df["ape"].astype(str).str[:2]
+    df["ape_subcategory"] = df["ape"].astype(str).str[2:4]
+    df["ape_activity"] = df["ape"].astype(str).str[4:5]
+    df["ape_is_tech"] = df["ape"].astype(str).str.startswith("62|63|70|71|72").astype(int)
+    df["ape_is_services"] = df["ape"].astype(str).str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
+    df["ape_is_manufacturing"] = df["ape"].astype(str).str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
+    df["ape_complexity"] = df["ape"].astype(str).str.count("[A-Z]")
+    df["ape_numeric_part"] = pd.to_numeric(df["ape"].astype(str).str.extract(r"(\d+)")[0], errors="coerce").fillna(0)
+    
+    # 31-40: Geographic Analysis (10 points) - Safe string operations
+    df["postal_code_length"] = df["postal_code"].astype(str).str.len()
+    df["postal_code_is_valid"] = df["postal_code"].astype(str).str.len().eq(5).astype(int)
+    df["postal_code_department"] = df["postal_code"].astype(str).str[:2]
+    df["postal_code_arrondissement"] = df["postal_code"].astype(str).str[2:4]
+    df["postal_code_is_paris"] = df["postal_code"].astype(str).str.startswith("75").astype(int)
+    df["postal_code_is_lyon"] = df["postal_code"].astype(str).str.startswith("69").astype(int)
+    df["postal_code_is_major_city"] = df["postal_code"].astype(str).str.startswith("75|69|13|31|59|44|67|68").astype(int)
+    df["city_length"] = df["city"].astype(str).str.len()
+    df["city_has_arrondissement"] = df["city"].astype(str).str.contains(r"\d+e", na=False).astype(int)
+    df["city_is_capital"] = df["city"].astype(str).str.lower().str.contains("paris|lyon|marseille|toulouse|nice|nantes|strasbourg|montpellier|bordeaux|lille", na=False).astype(int)
     
     # 41-50: Age and Maturity Analysis (10 points)
     df["age_years"] = pd.Timestamp.now().year - df["created_year"]
@@ -577,41 +664,41 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["age_stability"] = ((df["age_years"] >= 5) & (df["age_years"] <= 10)).astype(int)
     df["age_innovation"] = ((df["age_years"] >= 1) & (df["age_years"] <= 5)).astype(int)
     
-    # 51-60: Website Analysis (10 points)
-    df["website_has_https"] = df["website"].str.startswith("https://").astype(int)
-    df["website_has_www"] = df["website"].str.contains("www.").astype(int)
-    df["website_is_com"] = df["website"].str.endswith(".com").astype(int)
-    df["website_is_fr"] = df["website"].str.endswith(".fr").astype(int)
-    df["website_domain_length"] = df["website"].str.extract(r"://([^/]+)")[0].str.len()
-    df["website_has_subdomain"] = df["website"].str.count("\\.") > 2
-    df["website_has_tech_keywords"] = df["website"].str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart").astype(int)
-    df["website_complexity"] = df["website"].str.count("/")
-    df["website_has_port"] = df["website"].str.contains(":\\d+").astype(int)
-    df["website_has_path"] = df["website"].str.count("/") > 2
+    # 51-60: Website Analysis (10 points) - Safe string operations
+    df["website_has_https"] = df["website"].astype(str).str.startswith("https://").astype(int)
+    df["website_has_www"] = df["website"].astype(str).str.contains("www.", na=False).astype(int)
+    df["website_is_com"] = df["website"].astype(str).str.endswith(".com").astype(int)
+    df["website_is_fr"] = df["website"].astype(str).str.endswith(".fr").astype(int)
+    df["website_domain_length"] = df["website"].astype(str).str.extract(r"://([^/]+)")[0].str.len().fillna(0)
+    df["website_has_subdomain"] = (df["website"].astype(str).str.count("\\.") > 2).astype(int)
+    df["website_has_tech_keywords"] = df["website"].astype(str).str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart", na=False).astype(int)
+    df["website_complexity"] = df["website"].astype(str).str.count("/")
+    df["website_has_port"] = df["website"].astype(str).str.contains(":\\d+", na=False).astype(int)
+    df["website_has_path"] = (df["website"].astype(str).str.count("/") > 2).astype(int)
     
-    # 61-70: Email Analysis (10 points)
-    df["email_has_at"] = df["email"].str.contains("@").astype(int)
-    df["email_has_dot"] = df["email"].str.contains("\\.").astype(int)
-    df["email_is_contact"] = df["email"].str.lower().str.startswith("contact@").astype(int)
-    df["email_is_info"] = df["email"].str.lower().str.startswith("info@").astype(int)
-    df["email_is_hello"] = df["email"].str.lower().str.startswith("hello@").astype(int)
-    df["email_is_ceo"] = df["email"].str.lower().str.contains("ceo|director|manager").astype(int)
-    df["email_domain"] = df["email"].str.extract(r"@([^@]+)")[0]
+    # 61-70: Email Analysis (10 points) - Safe string operations
+    df["email_has_at"] = df["email"].astype(str).str.contains("@", na=False).astype(int)
+    df["email_has_dot"] = df["email"].astype(str).str.contains("\\.", na=False).astype(int)
+    df["email_is_contact"] = df["email"].astype(str).str.lower().str.startswith("contact@").astype(int)
+    df["email_is_info"] = df["email"].astype(str).str.lower().str.startswith("info@").astype(int)
+    df["email_is_hello"] = df["email"].astype(str).str.lower().str.startswith("hello@").astype(int)
+    df["email_is_ceo"] = df["email"].astype(str).str.lower().str.contains("ceo|director|manager", na=False).astype(int)
+    df["email_domain"] = df["email"].astype(str).str.extract(r"@([^@]+)")[0].fillna("")
     df["email_domain_is_com"] = df["email_domain"].str.endswith(".com").astype(int)
     df["email_domain_is_fr"] = df["email_domain"].str.endswith(".fr").astype(int)
-    df["email_length"] = df["email"].str.len()
+    df["email_length"] = df["email"].astype(str).str.len()
     
-    # 71-80: Business Intelligence (10 points)
+    # 71-80: Business Intelligence (10 points) - Safe operations
     df["is_active"] = df.get("active", True).astype(int)
     df["has_complete_data"] = (df["company_name"].notna() & df["siren"].notna() & df["ape"].notna()).astype(int)
     df["data_completeness"] = (df["company_name"].notna().astype(int) + df["siren"].notna().astype(int) + df["ape"].notna().astype(int) + df["postal_code"].notna().astype(int) + df["city"].notna().astype(int)) / 5
-    df["is_tech_company"] = (df["ape"].str.startswith("62|63|70|71|72") | df["company_name"].str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart")).astype(int)
-    df["is_services_company"] = df["ape"].str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
-    df["is_manufacturing"] = df["ape"].str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
-    df["is_b2b"] = df["ape"].str.startswith("62|63|70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
-    df["is_b2c"] = df["ape"].str.startswith("47|56|68|85|86|87|88|90|91|92|93|95|96").astype(int)
-    df["is_consulting"] = df["ape"].str.startswith("70|71|72").astype(int)
-    df["is_software"] = df["ape"].str.startswith("62|63").astype(int)
+    df["is_tech_company"] = (df["ape"].astype(str).str.startswith("62|63|70|71|72") | df["company_name"].astype(str).str.lower().str.contains("tech|digital|data|soft|system|solution|innovation|intelligence|cloud|ai|ml|cyber|smart", na=False)).astype(int)
+    df["is_services_company"] = df["ape"].astype(str).str.startswith("70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
+    df["is_manufacturing"] = df["ape"].astype(str).str.startswith("10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33").astype(int)
+    df["is_b2b"] = df["ape"].astype(str).str.startswith("62|63|70|71|72|73|74|75|76|77|78|79|80|81|82").astype(int)
+    df["is_b2c"] = df["ape"].astype(str).str.startswith("47|56|68|85|86|87|88|90|91|92|93|95|96").astype(int)
+    df["is_consulting"] = df["ape"].astype(str).str.startswith("70|71|72").astype(int)
+    df["is_software"] = df["ape"].astype(str).str.startswith("62|63").astype(int)
     
     # 81-90: Market Position (10 points)
     df["market_position_tech"] = df["is_tech_company"] * 0.8
@@ -689,11 +776,27 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     """Enhanced feature engineering for smart scoring"""
     df = df.copy()
     
-    # Ensure required columns exist
-    if "postal_code" not in df.columns:
-        df["postal_code"] = ""
-    if "city" not in df.columns:
-        df["city"] = ""
+    # Ensure required columns exist with safe defaults
+    required_columns = {
+        "postal_code": "",
+        "city": "",
+        "website": "",
+        "email": "",
+        "siren": "",
+        "ape": "",
+        "created_year": None,
+        "active": True
+    }
+    
+    for col, default_val in required_columns.items():
+        if col not in df.columns:
+            df[col] = default_val
+        else:
+            # Handle NaN values safely
+            if df[col].dtype == 'object':
+                df[col] = df[col].fillna(default_val if isinstance(default_val, str) else "")
+            else:
+                df[col] = df[col].fillna(default_val)
     
     # Basic features with safe type conversion
     df["siren"] = df["siren"].fillna("").astype(str)
