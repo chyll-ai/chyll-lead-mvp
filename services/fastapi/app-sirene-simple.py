@@ -357,8 +357,8 @@ async def train(req: TrainRequest):
                 
                 # Build reasons based on pattern matches
                 reasons = []
-                ape = company.get("activitePrincipaleUniteLegale", "")
-                region = company.get("codePostalEtablissement", "")[:2] if company.get("codePostalEtablissement") else ""
+                ape = company.get("ape", "")
+                region = company.get("postal_code", "")[:2] if company.get("postal_code") else ""
                 
                 if ape in patterns['positive_patterns'].get('ape_distribution', {}):
                     ape_freq = patterns['positive_patterns']['ape_distribution'][ape]
@@ -369,7 +369,7 @@ async def train(req: TrainRequest):
                     reasons.append(f"Winning region {region} ({region_freq:.1%} of wins)")
                 
                 scored_companies.append({
-                    "name": company.get("denominationUniteLegale", "N/A"),
+                    "name": company.get("company_name", "N/A"),
                     "siren": company.get("siren", "N/A"),
                     "ape": ape,
                     "region": region,
