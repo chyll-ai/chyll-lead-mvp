@@ -170,7 +170,7 @@ def sirene_query_from_filters(f: DiscoverFilters):
     """Build SIRENE query from filters according to SIRENE API v3.11 documentation"""
     clauses = []
     
-    # Always filter for active companies
+    # Always filter for active companies (A = Active, C = Closed)
     clauses.append("etatAdministratifUniteLegale:A")
     
     if f.ape_codes:
