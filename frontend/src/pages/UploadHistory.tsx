@@ -21,7 +21,7 @@ const UploadHistory: React.FC = () => {
   const train = async () => {
     setLogs("Training...");
     try {
-      const res = await postEdge("train", { tenant_id: "dev-tenant", rows });
+      const res = await postEdge("/train", { tenant_id: "dev-tenant", rows });
       setLogs(`OK: rows=${res.stats?.rows} wins=${res.stats?.wins} losses=${res.stats?.losses}`);
     } catch (e:any) {
       setLogs(`Error: ${e.message}`);

@@ -35,7 +35,7 @@ const Discover: React.FC = () => {
           headcount_buckets: ["1-10"]
         }
       };
-      const response = await postEdge("discover", payload);
+      const response = await postEdge("/discover", payload);
       
       if (response.ok) {
         setCompanies(response.companies || []);
