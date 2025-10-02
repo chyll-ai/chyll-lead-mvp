@@ -192,18 +192,19 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     """Enhanced feature engineering for smart scoring"""
     df = df.copy()
     
-    # Basic features
-    df["has_siren"] = df.get("siren","").astype(str).str.replace(r"\D","",regex=True).str.len().ge(9).astype(int)
+    # Basic features with safe type conversion
+    df["has_siren"] = df.get("siren", "").apply(lambda x: str(x) if pd.notna(x) else "").str.replace(r"\D","",regex=True).str.len().ge(9).astype(int)
     df["created_year"] = pd.to_numeric(df.get("created_year", np.nan), errors="coerce")
     df["age_years"] = np.where(df["created_year"].notna(), pd.Timestamp.now().year - df["created_year"], np.nan)
     
-    # Enhanced features for smart scoring
-    df["ape_category"] = df.get("ape", "").str[:2].astype(str)
+    # Enhanced features for smart scoring with safe string handling
+    df["ape"] = df.get("ape", "").apply(lambda x: str(x) if pd.notna(x) else "")
+    df["ape_category"] = df["ape"].str[:2]
     df["industry_score"] = df["ape_category"].map(get_industry_score)
     
     # Geographic intelligence from postal codes and cities
-    df["postal_code"] = df.get("postal_code", "").astype(str)
-    df["city"] = df.get("city", "").astype(str)
+    df["postal_code"] = df.get("postal_code", "").apply(lambda x: str(x) if pd.notna(x) else "")
+    df["city"] = df.get("city", "").apply(lambda x: str(x) if pd.notna(x) else "")
     df["region"] = df["postal_code"].apply(extract_region_from_postal_code)
     df["region_score"] = df["region"].map(get_region_score)
     df["city_score"] = df.apply(lambda row: get_city_score(row.get("city", ""), row.get("postal_code", "")), axis=1)
@@ -211,12 +212,17 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     # Use the higher of region or city score for geographic intelligence
     df["geographic_score"] = df[["region_score", "city_score"]].max(axis=1)
     
+    # Safe age categorization
     df["age_category"] = pd.cut(df["age_years"], bins=[0, 2, 5, 10, 100], labels=["startup", "growth", "mature", "established"])
     df["maturity_score"] = df["age_category"].map({"startup": 0.3, "growth": 0.8, "mature": 0.9, "established": 0.7})
-    df["data_quality"] = (df["has_siren"].astype(int) + 
-                         df["ape"].notna().astype(int) + 
-                         df["postal_code"].notna().astype(int) +
-                         df["city"].notna().astype(int)) / 4.0
+    
+    # Safe data quality calculation
+    df["data_quality"] = (
+        df["has_siren"].astype(int) + 
+        df["ape"].notna().astype(int) + 
+        df["postal_code"].notna().astype(int) +
+        df["city"].notna().astype(int)
+    ) / 4.0
     
     return df
 
@@ -439,9 +445,13 @@ def train(req: TrainRequest):
                 companies = sirene_fetch_api("", rows=1000, cap=1000)  # Get more companies
                 if companies:
                     print(f"Fetched {len(companies)} companies from SIRENE")
+                    print(f"Sample company data: {companies[0] if companies else 'None'}")
                     
                     # Process all companies and score them
                     df_sample = pd.DataFrame(companies)
+                    print(f"DataFrame columns: {df_sample.columns.tolist()}")
+                    print(f"DataFrame dtypes: {df_sample.dtypes.to_dict()}")
+                    
                     df_sample = featurize_simple(df_sample)
                     
                     # Score all companies
