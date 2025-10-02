@@ -243,22 +243,24 @@ def featurize_simple(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def get_industry_score(ape_category: str) -> float:
-    """Industry-specific scoring based on APE codes"""
+    """Industry-specific scoring based on APE codes - more realistic scoring"""
     industry_scores = {
-        "62": 0.9,  # Computer programming
-        "63": 0.8,  # Information service activities
-        "70": 0.8,  # Activities of head offices; management consultancy
-        "71": 0.7,  # Architectural and engineering activities
-        "72": 0.7,  # Scientific research and development
-        "85": 0.6,  # Education
-        "46": 0.6,  # Wholesale trade
-        "47": 0.5,  # Retail trade
-        "68": 0.5,  # Real estate activities
-        "41": 0.4,  # Construction
-        "10": 0.3,  # Manufacture of food products
-        "20": 0.3,  # Manufacture of chemicals
+        "62": 0.8,  # Computer programming (high tech)
+        "63": 0.7,  # Information service activities
+        "70": 0.6,  # Activities of head offices; management consultancy
+        "71": 0.6,  # Architectural and engineering activities
+        "72": 0.6,  # Scientific research and development
+        "85": 0.5,  # Education
+        "46": 0.5,  # Wholesale trade
+        "47": 0.4,  # Retail trade
+        "68": 0.4,  # Real estate activities
+        "41": 0.3,  # Construction
+        "10": 0.2,  # Manufacture of food products
+        "20": 0.2,  # Manufacture of chemicals
+        "52": 0.3,  # Warehousing and support activities
+        "77": 0.3,  # Rental and leasing activities
     }
-    return industry_scores.get(ape_category, 0.4)  # Default score for unknown industries
+    return industry_scores.get(ape_category, 0.3)  # Lower default score for unknown industries
 
 def get_region_score(region: str) -> float:
     """Geographic scoring based on regions"""
@@ -477,49 +479,90 @@ def train(req: TrainRequest):
                         similarities = [simple_similarity(current_text, hist_text) for hist_text in artifacts["hist_texts"]]
                         avg_similarity = np.mean(similarities) if similarities else 0.0
                         
-                        # Enhanced smart scoring algorithm
+                        # Smart multi-factor scoring algorithm
                         if clf and SKLEARN_AVAILABLE:
                             Xtab = pd.DataFrame([{
                                 "has_siren": int(df_sample.iloc[i]["has_siren"]),
                                 "age_years": float(df_sample.iloc[i]["age_years"]) if pd.notna(df_sample.iloc[i]["age_years"]) else -1.0,
                             }]).fillna(0)
-                            base_score = float(clf.predict_proba(Xtab)[0][1])
+                            ml_base_score = float(clf.predict_proba(Xtab)[0][1])
                         else:
-                            base_score = 0.5 + avg_similarity * 0.3
+                            ml_base_score = 0.3 + avg_similarity * 0.4  # Lower base, more similarity weight
                         
-                        # Apply smart multipliers
-                        industry_multiplier = df_sample.iloc[i].get("industry_score", 0.5)
-                        geographic_multiplier = df_sample.iloc[i].get("geographic_score", 0.5)
-                        maturity_multiplier = df_sample.iloc[i].get("maturity_score", 0.5)
-                        data_quality_multiplier = df_sample.iloc[i].get("data_quality", 0.5)
+                        # Get individual factor scores
+                        industry_score = df_sample.iloc[i].get("industry_score", 0.3)
+                        geographic_score = df_sample.iloc[i].get("geographic_score", 0.3)
+                        maturity_score = df_sample.iloc[i].get("maturity_score", 0.3)
+                        data_quality_score = df_sample.iloc[i].get("data_quality", 0.3)
                         
-                        # Calculate enhanced score
-                        p = base_score * (
-                            0.4 * industry_multiplier + 
-                            0.25 * geographic_multiplier + 
-                            0.2 * maturity_multiplier + 
-                            0.15 * data_quality_multiplier
+                        # Company size indicators (if available)
+                        siren_length = len(str(df_sample.iloc[i].get("siren", "")))
+                        size_indicator = 0.6 if siren_length >= 9 else 0.4  # Longer SIREN = more established
+                        
+                        # Calculate weighted composite score
+                        p = (
+                            0.25 * ml_base_score +           # ML prediction (25%)
+                            0.20 * industry_score +          # Industry relevance (20%)
+                            0.15 * geographic_score +        # Geographic intelligence (15%)
+                            0.15 * maturity_score +          # Company maturity (15%)
+                            0.10 * data_quality_score +      # Data completeness (10%)
+                            0.10 * size_indicator +          # Company size (10%)
+                            0.05 * avg_similarity            # Historical similarity (5%)
                         )
                         
-                        # Add similarity boost
-                        p = min(0.95, p + avg_similarity * 0.15)
+                        # Apply realistic bounds (not too optimistic)
+                        p = min(0.85, max(0.15, p))  # Cap at 85%, floor at 15%
                         band = "High" if p>=0.75 else ("Medium" if p>=0.5 else "Low")
                         
-                        # Generate reasons for scoring
+                        # Generate smart reasons for scoring
                         reasons = []
-                        if df_sample.iloc[i].get("ape"):
-                            reasons.append(f"APE {df_sample.iloc[i]['ape']}")
-                        if pd.notna(df_sample.iloc[i]["age_years"]):
+                        
+                        # Industry relevance (only if significant)
+                        if industry_score > 0.7:
+                            ape = df_sample.iloc[i].get("ape", "")
+                            if ape:
+                                reasons.append(f"Tech industry ({ape})")
+                        elif industry_score > 0.5:
+                            ape = df_sample.iloc[i].get("ape", "")
+                            if ape:
+                                reasons.append(f"Relevant sector ({ape})")
+                        
+                        # Company maturity (only if significant)
+                        if maturity_score > 0.7 and pd.notna(df_sample.iloc[i]["age_years"]):
                             age = int(df_sample.iloc[i]["age_years"])
-                            reasons.append(f"Age {age} years")
-                        if df_sample.iloc[i].get("city"):
-                            city = df_sample.iloc[i]["city"]
-                            postal_code = df_sample.iloc[i].get("postal_code", "")
-                            reasons.append(f"{city} ({postal_code})")
-                        if df_sample.iloc[i].get("region"):
-                            reasons.append(f"Region {df_sample.iloc[i]['region']}")
-                        if avg_similarity > 0.1:
-                            reasons.append(f"Similar to past wins ({avg_similarity:.2f})")
+                            if age >= 5:
+                                reasons.append(f"Established ({age}y)")
+                            elif age >= 2:
+                                reasons.append(f"Growing ({age}y)")
+                        
+                        # Geographic intelligence (only if available)
+                        if geographic_score > 0.6:
+                            if df_sample.iloc[i].get("city"):
+                                city = df_sample.iloc[i]["city"]
+                                reasons.append(f"Prime location ({city})")
+                            elif df_sample.iloc[i].get("region"):
+                                region = df_sample.iloc[i]["region"]
+                                reasons.append(f"Good region ({region})")
+                        
+                        # Data quality (only if high)
+                        if data_quality_score > 0.75:
+                            reasons.append("Complete data")
+                        
+                        # Historical similarity (only if significant)
+                        if avg_similarity > 0.2:
+                            reasons.append(f"Similar to wins ({avg_similarity:.1f})")
+                        
+                        # Company size indicator
+                        if size_indicator > 0.5:
+                            reasons.append("Established company")
+                        
+                        # Fallback reasons if none generated
+                        if not reasons:
+                            ape = df_sample.iloc[i].get("ape", "")
+                            if ape:
+                                reasons.append(f"Industry {ape}")
+                            else:
+                                reasons.append("Basic match")
                         
                         scored_companies.append({
                             "company_id": f"auto-disc-{i}",
@@ -541,8 +584,8 @@ def train(req: TrainRequest):
                     # Debug: Show all scores before filtering
                     print(f"All {len(scored_companies)} companies with scores: {[c['win_score'] for c in scored_companies[:5]]}")
                     
-                    # Quality filtering - only high-scoring leads (lowered threshold for testing)
-                    high_quality_leads = [c for c in scored_companies if c["win_score"] >= 0.50]
+                    # Quality filtering - only high-scoring leads (realistic threshold)
+                    high_quality_leads = [c for c in scored_companies if c["win_score"] >= 0.60]
                     
                     # Sort by win score and take top results
                     high_quality_leads.sort(key=lambda x: x["win_score"], reverse=True)
