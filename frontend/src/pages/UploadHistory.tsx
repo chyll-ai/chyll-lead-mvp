@@ -6,6 +6,9 @@ const UploadHistory: React.FC = () => {
   const [logs, setLogs] = useState<string>("");
   const [discoveredLeads, setDiscoveredLeads] = useState<any[]>([]);
   const [showLeads, setShowLeads] = useState(false);
+  const [isTraining, setIsTraining] = useState(false);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [modelTrained, setModelTrained] = useState(false);
 
   const onFile = async (file: File) => {
     const text = await file.text();
@@ -21,33 +24,48 @@ const UploadHistory: React.FC = () => {
   };
 
   const train = async () => {
-    setLogs("Training...");
+    setIsTraining(true);
+    setLogs("🔄 Training model with your data...");
     setShowLeads(false);
+    setModelTrained(false);
+    
     try {
       const res = await postEdge("/train", { tenant_id: "dev-tenant", rows });
-      console.log("Training response:", res); // Debug log
-      console.log("Response keys:", Object.keys(res)); // Debug log
-      console.log("discovered_leads:", res.discovered_leads); // Debug log
-      console.log("discovered_leads length:", res.discovered_leads?.length); // Debug log
+      console.log("Training response:", res);
       
       if (res.ok && res.stats) {
-        setLogs(`OK: rows=${res.stats.rows} wins=${res.stats.wins} losses=${res.stats.losses}`);
-        
-        // Show discovered leads if available
-        if (res.discovered_leads && res.discovered_leads.length > 0) {
-          console.log("Setting discovered leads:", res.discovered_leads); // Debug log
-          setDiscoveredLeads(res.discovered_leads);
-          setShowLeads(true);
-          setLogs(`${res.message || 'Model trained successfully!'} Showing ${res.discovered_leads.length} discovered leads.`);
-        } else {
-          console.log("No discovered leads found"); // Debug log
-          setLogs(`${res.message || 'Model trained successfully!'} No companies found matching your patterns.`);
-        }
+        setModelTrained(true);
+        setLogs(`✅ Model trained successfully!\n📊 Stats: ${res.stats.rows} rows, ${res.stats.wins} wins, ${res.stats.losses} losses\n\n🎯 Ready to discover companies! Click "Discover Companies" below.`);
       } else {
-        setLogs(`Error: ${res.error || 'Unknown error'}`);
+        setLogs(`❌ Error: ${res.error || 'Unknown error'}`);
       }
     } catch (e:any) {
-      setLogs(`Error: ${e.message}`);
+      setLogs(`❌ Error: ${e.message}`);
+    } finally {
+      setIsTraining(false);
+    }
+  };
+
+  const discover = async () => {
+    setIsDiscovering(true);
+    setLogs("🔍 Discovering companies from SIRENE database...");
+    setShowLeads(false);
+    
+    try {
+      const res = await postEdge("/discover", { tenant_id: "dev-tenant", limit: 20 });
+      console.log("Discovery response:", res);
+      
+      if (res.ok && res.companies && res.companies.length > 0) {
+        setDiscoveredLeads(res.companies);
+        setShowLeads(true);
+        setLogs(`🎉 Found ${res.companies.length} companies matching your winning patterns!\n\n📈 Companies are sorted by win probability (highest first).`);
+      } else {
+        setLogs(`⚠️ No companies found matching your patterns. Try training with more diverse data.`);
+      }
+    } catch (e:any) {
+      setLogs(`❌ Error: ${e.message}`);
+    } finally {
+      setIsDiscovering(false);
     }
   };
 
@@ -98,13 +116,23 @@ const UploadHistory: React.FC = () => {
             </div>
           )}
 
-          <button
-            onClick={train}
-            disabled={!rows.length}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-black bg-white hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white disabled:bg-gray-600 disabled:cursor-not-allowed"
-          >
-            Train My Model
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={train}
+              disabled={!rows.length || isTraining}
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-black bg-white hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white disabled:bg-gray-600 disabled:cursor-not-allowed"
+            >
+              {isTraining ? "🔄 Training..." : "🧠 Train My Model"}
+            </button>
+            
+            <button
+              onClick={discover}
+              disabled={!modelTrained || isDiscovering}
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:bg-gray-800 disabled:cursor-not-allowed"
+            >
+              {isDiscovering ? "🔍 Discovering..." : "🎯 Discover Companies"}
+            </button>
+          </div>
 
           {logs && (
             <div className="bg-gray-800 p-3 rounded-md border border-gray-700">
@@ -115,7 +143,7 @@ const UploadHistory: React.FC = () => {
           {showLeads && discoveredLeads.length > 0 && (
             <div className="mt-6">
               <h3 className="text-lg font-medium text-white mb-4">
-                🎯 Discovered Leads (Real SIRENE Data)
+                🎯 Discovered Companies ({discoveredLeads.length} found)
               </h3>
               <div className="bg-gray-900 shadow rounded-lg overflow-hidden border border-gray-700">
                 <div className="overflow-x-auto">
@@ -193,7 +221,7 @@ const UploadHistory: React.FC = () => {
               </div>
               <div className="mt-4 text-center">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-800 text-green-200">
-                  ✅ Real SIRENE Data
+                  ✅ Real SIRENE Data • Sorted by Win Probability
                 </span>
               </div>
             </div>
