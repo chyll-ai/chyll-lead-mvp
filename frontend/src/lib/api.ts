@@ -1,6 +1,8 @@
+// Get API base URL from environment or default to Railway
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://chyll-lead-mvp-production.up.railway.app';
+
 export async function postEdge(path: string, body: any) {
-  // Direct FastAPI call - working solution for local development
-  const url = `http://127.0.0.1:8000${path}`;
+  const url = `${API_BASE_URL}${path}`;
   const r = await fetch(url, { 
     method: "POST", 
     headers: { "content-type": "application/json" }, 
