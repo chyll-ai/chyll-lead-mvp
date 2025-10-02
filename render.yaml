@@ -5,6 +5,6 @@ services:
     dockerfilePath: ./Dockerfile
     envVars:
       - key: SIRENE_MODE
-        value: api
+        value: demo
       - key: SIRENE_TOKEN
         sync: false # Set this in Render dashboard
