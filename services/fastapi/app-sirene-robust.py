@@ -183,6 +183,19 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
                         postal_code = addr.get("codePostalEtablissement", "")
                         city = addr.get("libelleCommuneEtablissement", "")
                     
+                    # Extract additional SIRENE data points
+                    legal_category = period.get("categorieJuridiqueUniteLegale", "")
+                    employee_range = period.get("trancheEffectifsUniteLegale", "")
+                    is_employer = period.get("caractereEmployeurUniteLegale", "")
+                    company_category = period.get("categorieEntreprise", "")
+                    company_size_year = period.get("anneeCategorieEntreprise", "")
+                    company_size = period.get("categorieEntreprise", "")
+                    
+                    # Extract establishment data if available
+                    establishment_count = 0
+                    if "etablissements" in unit and unit["etablissements"]:
+                        establishment_count = len(unit["etablissements"])
+                    
                     companies.append({
                         "company_name": name,
                         "siren": siren,
@@ -192,6 +205,13 @@ def sirene_fetch_api(query: str, rows: int = 1000, cap: int = 1000):
                         "department": department,
                         "postal_code": postal_code,
                         "city": city,
+                        "legal_category": legal_category,
+                        "employee_range": employee_range,
+                        "is_employer": is_employer,
+                        "company_category": company_category,
+                        "company_size_year": company_size_year,
+                        "company_size": company_size,
+                        "establishment_count": establishment_count,
                         "active": True
                     })
         
@@ -591,7 +611,14 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
         "website": "",
         "email": "",
         "created_year": None,
-        "active": True
+        "active": True,
+        "legal_category": "",
+        "employee_range": "",
+        "is_employer": "",
+        "company_category": "",
+        "company_size_year": "",
+        "company_size": "",
+        "establishment_count": 0
     }
     
     for col, default_val in safe_columns.items():
@@ -712,7 +739,19 @@ def add_comprehensive_data_points(df: pd.DataFrame) -> pd.DataFrame:
     df["name_has_snc"] = df["company_name"].astype(str).str.lower().str.contains("snc", na=False).astype(int)
     df["name_has_auto_entrepreneur"] = df["company_name"].astype(str).str.lower().str.contains("auto-entrepreneur|auto entrepreneur", na=False).astype(int)
     
-    # 91-100: Composite Scores (10 points) - Based on actual SIRENE data
+    # 91-100: Employee & Company Size Analysis (10 points) - Based on SIRENE data
+    df["employee_range_score"] = df["employee_range"].apply(get_employee_range_score)
+    df["is_employer_score"] = (df["is_employer"] == "O").astype(int)
+    df["company_category_score"] = df["company_category"].apply(get_company_category_score)
+    df["legal_category_score"] = df["legal_category"].apply(get_legal_category_score)
+    df["establishment_count_score"] = df["establishment_count"].apply(get_establishment_count_score)
+    df["company_size_indicator"] = df["company_size"].apply(get_company_size_indicator)
+    df["employer_characteristic"] = (df["is_employer"] == "O").astype(int)
+    df["multi_establishment"] = (df["establishment_count"] > 1).astype(int)
+    df["large_company_indicator"] = (df["employee_range"].isin(["53", "54", "55", "56", "57", "58", "59", "60", "61", "62"])).astype(int)
+    df["small_company_indicator"] = (df["employee_range"].isin(["00", "01", "02", "03", "11", "12"])).astype(int)
+    
+    # 101-110: Composite Scores (10 points) - Based on actual SIRENE data
     df["composite_tech_score"] = (df["ape_tech_intensity"] * 0.6 + df["name_has_tech"] * 0.4)
     df["composite_geographic_score"] = (df["is_paris_region"] * 0.4 + df["is_lyon_region"] * 0.3 + df["is_marseille_region"] * 0.2 + df["is_toulouse_region"] * 0.1)
     df["composite_maturity_score"] = (df["age_sweet_spot"] * 0.4 + df["age_stability"] * 0.3 + df["age_innovation"] * 0.3)
@@ -758,6 +797,103 @@ def estimate_establishment_count(siren: str) -> int:
             return 3  # Large multi-establishment
     except:
         return 0
+
+def get_employee_range_score(employee_range: str) -> float:
+    """Score based on employee range - optimal for deal closing"""
+    if not employee_range:
+        return 0.3
+    
+    # SIRENE employee range codes (trancheEffectifsUniteLegale)
+    range_scores = {
+        "00": 0.2,  # 0 salarié
+        "01": 0.3,  # 1 ou 2 salariés
+        "02": 0.4,  # 3 à 5 salariés
+        "03": 0.5,  # 6 à 9 salariés
+        "11": 0.6,  # 10 à 19 salariés
+        "12": 0.7,  # 20 à 49 salariés
+        "21": 0.8,  # 50 à 99 salariés
+        "22": 0.9,  # 100 à 199 salariés
+        "31": 0.8,  # 200 à 249 salariés
+        "32": 0.7,  # 250 à 499 salariés
+        "41": 0.6,  # 500 à 999 salariés
+        "42": 0.5,  # 1000 à 1999 salariés
+        "51": 0.4,  # 2000 à 4999 salariés
+        "52": 0.3,  # 5000 à 9999 salariés
+        "53": 0.2,  # 10000 salariés et plus
+    }
+    return range_scores.get(employee_range, 0.3)
+
+def get_company_category_score(company_category: str) -> float:
+    """Score based on company category"""
+    if not company_category:
+        return 0.3
+    
+    # SIRENE company categories
+    category_scores = {
+        "PME": 0.8,  # Petites et moyennes entreprises
+        "ETI": 0.9,  # Entreprises de taille intermédiaire
+        "GE": 0.6,   # Grandes entreprises
+        "TPE": 0.7,  # Très petites entreprises
+    }
+    return category_scores.get(company_category, 0.3)
+
+def get_legal_category_score(legal_category: str) -> float:
+    """Score based on legal category"""
+    if not legal_category:
+        return 0.3
+    
+    # SIRENE legal categories - higher scores for more professional structures
+    legal_scores = {
+        "5710": 0.9,  # SAS
+        "5499": 0.8,  # SARL
+        "5710": 0.9,  # SASU
+        "5499": 0.8,  # EURL
+        "5499": 0.8,  # SARLU
+        "5710": 0.9,  # SAS
+        "5499": 0.8,  # SARL
+        "5499": 0.8,  # SNC
+        "5499": 0.8,  # SCI
+        "5499": 0.8,  # Auto-entrepreneur
+    }
+    return legal_scores.get(legal_category, 0.3)
+
+def get_establishment_count_score(establishment_count: int) -> float:
+    """Score based on number of establishments"""
+    if establishment_count == 0:
+        return 0.3
+    elif establishment_count == 1:
+        return 0.7  # Single establishment - good for targeting
+    elif establishment_count <= 3:
+        return 0.8  # Small multi-establishment - good growth potential
+    elif establishment_count <= 10:
+        return 0.9  # Medium multi-establishment - excellent
+    else:
+        return 0.6  # Large multi-establishment - might be harder to reach decision makers
+
+def get_company_size_indicator(company_size: str) -> float:
+    """Score based on company size indicator"""
+    if not company_size:
+        return 0.3
+    
+    # SIRENE company size indicators
+    size_scores = {
+        "00": 0.2,  # 0 salarié
+        "01": 0.3,  # 1 ou 2 salariés
+        "02": 0.4,  # 3 à 5 salariés
+        "03": 0.5,  # 6 à 9 salariés
+        "11": 0.6,  # 10 à 19 salariés
+        "12": 0.7,  # 20 à 49 salariés
+        "21": 0.8,  # 50 à 99 salariés
+        "22": 0.9,  # 100 à 199 salariés
+        "31": 0.8,  # 200 à 249 salariés
+        "32": 0.7,  # 250 à 499 salariés
+        "41": 0.6,  # 500 à 999 salariés
+        "42": 0.5,  # 1000 à 1999 salariés
+        "51": 0.4,  # 2000 à 4999 salariés
+        "52": 0.3,  # 5000 à 9999 salariés
+        "53": 0.2,  # 10000 salariés et plus
+    }
+    return size_scores.get(company_size, 0.3)
 
 def simple_similarity(text1: str, text2: str) -> float:
     """Simple text similarity based on common words"""
@@ -1196,55 +1332,63 @@ def train(req: TrainRequest):
                         geographic_intelligence_score = df_sample.iloc[i].get("geographic_intelligence", 0.3)
                         business_district_score = df_sample.iloc[i].get("business_district_score", 0.3)
                         
-                        # 100 Data Points Scoring System - Based on actual SIRENE data
-                        # Core ML and Business Intelligence (30%)
+                        # 110 Data Points Scoring System - Based on comprehensive SIRENE data
+                        # Core ML and Business Intelligence (25%)
                         core_score = (
-                            0.15 * ml_base_score +                    # ML prediction (15%)
-                            0.08 * industry_score +                   # Industry relevance (8%)
-                            0.07 * deal_readiness_score               # Deal readiness (7%)
+                            0.12 * ml_base_score +                    # ML prediction (12%)
+                            0.07 * industry_score +                   # Industry relevance (7%)
+                            0.06 * deal_readiness_score               # Deal readiness (6%)
                         )
                         
                         # Company Characteristics (25%) - Based on SIRENE data
                         company_score = (
-                            0.06 * df_sample.iloc[i].get("composite_tech_score", 0.3) +
-                            0.05 * df_sample.iloc[i].get("composite_maturity_score", 0.3) +
+                            0.05 * df_sample.iloc[i].get("composite_tech_score", 0.3) +
+                            0.04 * df_sample.iloc[i].get("composite_maturity_score", 0.3) +
                             0.04 * df_sample.iloc[i].get("composite_establishment_score", 0.3) +
                             0.04 * df_sample.iloc[i].get("composite_stability_score", 0.3) +
-                            0.03 * df_sample.iloc[i].get("composite_growth_score", 0.3) +
-                            0.03 * df_sample.iloc[i].get("composite_innovation_score", 0.3)
+                            0.04 * df_sample.iloc[i].get("composite_growth_score", 0.3) +
+                            0.04 * df_sample.iloc[i].get("composite_innovation_score", 0.3)
                         )
                         
-                        # Geographic Intelligence (20%) - Based on SIRENE data
+                        # Employee & Company Size Intelligence (20%) - NEW SIRENE data
+                        size_score = (
+                            0.05 * df_sample.iloc[i].get("employee_range_score", 0.3) +
+                            0.04 * df_sample.iloc[i].get("is_employer_score", 0) +
+                            0.04 * df_sample.iloc[i].get("company_category_score", 0.3) +
+                            0.03 * df_sample.iloc[i].get("legal_category_score", 0.3) +
+                            0.02 * df_sample.iloc[i].get("establishment_count_score", 0.3) +
+                            0.02 * df_sample.iloc[i].get("company_size_indicator", 0.3)
+                        )
+                        
+                        # Geographic Intelligence (15%) - Based on SIRENE data
                         geographic_score = (
-                            0.05 * df_sample.iloc[i].get("composite_geographic_score", 0.3) +
-                            0.04 * df_sample.iloc[i].get("is_paris_region", 0) +
-                            0.03 * df_sample.iloc[i].get("is_lyon_region", 0) +
-                            0.03 * df_sample.iloc[i].get("is_marseille_region", 0) +
+                            0.04 * df_sample.iloc[i].get("composite_geographic_score", 0.3) +
+                            0.03 * df_sample.iloc[i].get("is_paris_region", 0) +
+                            0.02 * df_sample.iloc[i].get("is_lyon_region", 0) +
+                            0.02 * df_sample.iloc[i].get("is_marseille_region", 0) +
                             0.02 * df_sample.iloc[i].get("is_toulouse_region", 0) +
-                            0.02 * df_sample.iloc[i].get("is_nice_region", 0) +
+                            0.01 * df_sample.iloc[i].get("is_nice_region", 0) +
                             0.01 * df_sample.iloc[i].get("is_nantes_region", 0)
                         )
                         
-                        # Business Intelligence (15%) - Based on SIRENE data
+                        # Business Intelligence (10%) - Based on SIRENE data
                         business_score = (
-                            0.04 * df_sample.iloc[i].get("composite_business_score", 0.3) +
-                            0.03 * df_sample.iloc[i].get("ape_tech_intensity", 0) +
-                            0.03 * df_sample.iloc[i].get("ape_services_intensity", 0) +
+                            0.03 * df_sample.iloc[i].get("composite_business_score", 0.3) +
+                            0.02 * df_sample.iloc[i].get("ape_tech_intensity", 0) +
+                            0.02 * df_sample.iloc[i].get("ape_services_intensity", 0) +
                             0.02 * df_sample.iloc[i].get("name_has_sas", 0) +
-                            0.02 * df_sample.iloc[i].get("name_has_sarl", 0) +
-                            0.01 * df_sample.iloc[i].get("name_has_sa", 0)
+                            0.01 * df_sample.iloc[i].get("name_has_sarl", 0)
                         )
                         
-                        # Data Quality and Completeness (10%) - Based on SIRENE data
+                        # Data Quality and Completeness (5%) - Based on SIRENE data
                         quality_score = (
-                            0.04 * df_sample.iloc[i].get("composite_data_quality", 0.3) +
-                            0.03 * df_sample.iloc[i].get("siren_is_valid", 0) +
-                            0.02 * df_sample.iloc[i].get("ape_is_valid", 0) +
-                            0.01 * df_sample.iloc[i].get("postal_code_is_valid", 0)
+                            0.02 * df_sample.iloc[i].get("composite_data_quality", 0.3) +
+                            0.02 * df_sample.iloc[i].get("siren_is_valid", 0) +
+                            0.01 * df_sample.iloc[i].get("ape_is_valid", 0)
                         )
                         
                         # Final composite score
-                        p = core_score + company_score + geographic_score + business_score + quality_score
+                        p = core_score + company_score + size_score + geographic_score + business_score + quality_score
                         
                         # Apply realistic bounds (not too optimistic)
                         p = min(0.85, max(0.15, p))  # Cap at 85%, floor at 15%
