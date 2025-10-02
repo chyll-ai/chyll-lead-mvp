@@ -341,27 +341,46 @@ async def train(req: TrainRequest):
             print(f"[DEBUG] Built SIRENE filters: {sirene_filters}")
             
             # Fetch companies from SIRENE
-            companies = await fetch_sirene_companies(sirene_filters, limit=20)
+            companies = await fetch_sirene_companies(sirene_filters, limit=100)
             print(f"[DEBUG] Fetched {len(companies)} companies from SIRENE")
             
-            # Score companies based on patterns
+            # Score companies and filter for high win probability
             scored_companies = []
             for company in companies:
                 score = score_company(company, patterns)
-                scored_companies.append({
-                    "name": company.get("denominationUniteLegale", "N/A"),
-                    "siren": company.get("siren", "N/A"),
-                    "ape": company.get("activitePrincipaleUniteLegale", "N/A"),
-                    "region": company.get("codePostalEtablissement", "N/A")[:2] if company.get("codePostalEtablissement") else "N/A",
-                    "win_score": score,
-                    "band": "High" if score > 0.7 else "Medium" if score > 0.4 else "Low",
-                    "confidence_badge": f"{score:.1%}",
-                    "reasons": [f"Matches positive patterns (score: {score:.2f})"],
-                    "source": "SIRENE"
-                })
+                
+                # Only include companies with win probability > 0.6 (60%)
+                if score > 0.6:
+                    # Build reasons based on pattern matches
+                    reasons = []
+                    ape = company.get("activitePrincipaleUniteLegale", "")
+                    region = company.get("codePostalEtablissement", "")[:2] if company.get("codePostalEtablissement") else ""
+                    
+                    if ape in patterns['positive_patterns'].get('ape_distribution', {}):
+                        ape_freq = patterns['positive_patterns']['ape_distribution'][ape]
+                        reasons.append(f"Winning APE code {ape} ({ape_freq:.1%} of wins)")
+                    
+                    if region in patterns['positive_patterns'].get('region_distribution', {}):
+                        region_freq = patterns['positive_patterns']['region_distribution'][region]
+                        reasons.append(f"Winning region {region} ({region_freq:.1%} of wins)")
+                    
+                    scored_companies.append({
+                        "name": company.get("denominationUniteLegale", "N/A"),
+                        "siren": company.get("siren", "N/A"),
+                        "ape": ape,
+                        "region": region,
+                        "win_score": score,
+                        "band": "High" if score > 0.8 else "Medium",
+                        "confidence_badge": f"{score:.1%}",
+                        "reasons": reasons if reasons else [f"High win probability: {score:.1%}"],
+                        "source": "SIRENE"
+                    })
             
-            # Sort by score (highest first)
+            # Sort by score (highest first) and limit to top 20
             scored_companies.sort(key=lambda x: x["win_score"], reverse=True)
+            scored_companies = scored_companies[:20]
+            
+            print(f"[DEBUG] Filtered to {len(scored_companies)} high-probability companies (score > 0.6)")
             
             return {
                 "ok": True,
