@@ -388,72 +388,103 @@ def find_optimal_age_range(won_ages: List[int], lost_ages: List[int]) -> str:
     else:
         return "mixed age range"
 
+def build_smart_sirene_query_from_patterns(won_deals_df: pd.DataFrame) -> str:
+    """Build smart SIRENE query based on comprehensive won deal patterns"""
+    if won_deals_df.empty:
+        return "etatAdministratifUniteLegale:A"  # Fallback to active companies only
+    
+    print("Building smart SIRENE query from won deal patterns...")
+    
+    # Extract patterns from won deals using 110 data points
+    query_parts = ["etatAdministratifUniteLegale:A"]  # Always active companies
+    
+    # 1. APE Code Patterns (Industry Intelligence)
+    ape_patterns = won_deals_df["ape"].value_counts()
+    if len(ape_patterns) > 0:
+        # Get top 2 most common APE codes from won deals
+        top_apes = ape_patterns.head(2).index.tolist()
+        if len(top_apes) == 1:
+            query_parts.append(f"activitePrincipaleUniteLegale:{top_apes[0]}")
+        elif len(top_apes) == 2:
+            ape_query = f"activitePrincipaleUniteLegale:{top_apes[0]} OR activitePrincipaleUniteLegale:{top_apes[1]}"
+            query_parts.append(f"({ape_query})")
+        print(f"APE patterns: {dict(ape_patterns.head(3))}")
+    
+    # 2. Employee Range Patterns (Size Intelligence)
+    employee_patterns = won_deals_df["employee_range"].value_counts()
+    if len(employee_patterns) > 0:
+        # Get most common employee range
+        top_employee_range = employee_patterns.index[0]
+        if top_employee_range and top_employee_range != "":
+            query_parts.append(f"trancheEffectifsUniteLegale:{top_employee_range}")
+        print(f"Employee range patterns: {dict(employee_patterns.head(3))}")
+    
+    # 3. Legal Category Patterns (Structure Intelligence)
+    legal_patterns = won_deals_df["legal_category"].value_counts()
+    if len(legal_patterns) > 0:
+        # Get most common legal category
+        top_legal = legal_patterns.index[0]
+        if top_legal and top_legal != "":
+            query_parts.append(f"categorieJuridiqueUniteLegale:{top_legal}")
+        print(f"Legal category patterns: {dict(legal_patterns.head(3))}")
+    
+    # 4. Geographic Patterns (Location Intelligence)
+    region_patterns = won_deals_df["region"].value_counts()
+    city_patterns = won_deals_df["city"].value_counts()
+    
+    if len(region_patterns) > 0:
+        # Get top region
+        top_region = region_patterns.index[0]
+        if top_region and top_region != "":
+            query_parts.append(f"codeRegion:{top_region}")
+        print(f"Region patterns: {dict(region_patterns.head(3))}")
+    
+    # 5. Company Size Patterns
+    size_patterns = won_deals_df["company_size"].value_counts()
+    if len(size_patterns) > 0:
+        top_size = size_patterns.index[0]
+        if top_size and top_size != "":
+            query_parts.append(f"categorieEntreprise:{top_size}")
+        print(f"Company size patterns: {dict(size_patterns.head(3))}")
+    
+    # 6. Age Patterns (Maturity Intelligence)
+    age_stats = won_deals_df["age_years"].describe()
+    if not age_stats.empty and pd.notna(age_stats["mean"]):
+        mean_age = int(age_stats["mean"])
+        # Create age range around mean
+        age_min = max(0, mean_age - 2)
+        age_max = mean_age + 2
+        print(f"Age patterns: mean={mean_age}, range={age_min}-{age_max}")
+    
+    # Build final query
+    final_query = " AND ".join(query_parts)
+    
+    # Safety check: limit query length
+    if len(final_query) > 200:
+        # Fallback to simpler query
+        final_query = " AND ".join(query_parts[:3])  # Keep only first 3 parts
+    
+    print(f"Final SIRENE query: {final_query}")
+    return final_query
+
 def build_safe_sirene_query(historical_data: List[HistoryRow]) -> str:
     """Build safe SIRENE query that won't break the API"""
     if not historical_data:
-        return ""  # Empty query for broad results
+        return "etatAdministratifUniteLegale:A"  # Fallback to active companies
     
-    # Analyze deal patterns
-    analysis = analyze_deal_patterns(historical_data)
-    print(f"Deal analysis: {analysis}")
+    # Convert to DataFrame for pattern analysis
+    df = pd.DataFrame([row.model_dump() for row in historical_data])
+    if df.empty:
+        return "etatAdministratifUniteLegale:A"
     
-    # Extract patterns from won deals
-    won_deals = [row for row in historical_data if row.deal_status == "won"]
-    if not won_deals:
-        return ""  # Empty query for broad results
+    # Apply feature engineering to get 110 data points
+    df = featurize_simple(df)
     
-    # Get APE codes from won deals (safely)
-    ape_codes = []
-    regions = []
+    # Filter won deals
+    won_deals = df[df["deal_status"].str.lower() == "won"]
     
-    for deal in won_deals:
-        # Safe APE code extraction
-        if hasattr(deal, 'ape') and deal.ape and str(deal.ape).strip():
-            ape_code = str(deal.ape).strip()
-            if len(ape_code) >= 5:  # Valid APE code length
-                ape_codes.append(ape_code)
-        
-        # Safe postal code extraction
-        if hasattr(deal, 'postal_code') and deal.postal_code and str(deal.postal_code).strip():
-            postal_str = str(deal.postal_code).strip().zfill(5)
-            if len(postal_str) == 5 and postal_str.isdigit():
-                first_two = postal_str[:2]
-                if first_two in ["75", "77", "78", "91", "92", "93", "94", "95"]:
-                    regions.append("11")  # Île-de-France
-                elif first_two == "69":
-                    regions.append("69")  # Rhône
-                elif first_two == "13":
-                    regions.append("13")  # Bouches-du-Rhône
-    
-    # Build safe query with limits
-    query_parts = []
-    
-    # Always include active companies filter
-    query_parts.append("etatAdministratifUniteLegale:A")
-    
-    # Add APE code filters (safely, max 2 codes to avoid API limits)
-    if ape_codes:
-        unique_apes = list(set(ape_codes))[:2]  # Limit to 2 APE codes
-        if len(unique_apes) == 1:
-            query_parts.append(f"activitePrincipaleUniteLegale:{unique_apes[0]}")
-        elif len(unique_apes) == 2:
-            ape_query = f"activitePrincipaleUniteLegale:{unique_apes[0]} OR activitePrincipaleUniteLegale:{unique_apes[1]}"
-            query_parts.append(f"({ape_query})")
-    
-    # Add region filters (safely, max 1 region to avoid API limits)
-    if regions:
-        unique_regions = list(set(regions))[:1]  # Limit to 1 region
-        if unique_regions:
-            query_parts.append(f"codeRegion:{unique_regions[0]}")
-    
-    # Join with AND, but limit total query length
-    final_query = " AND ".join(query_parts)
-    
-    # Safety check: limit query length to prevent API errors
-    if len(final_query) > 200:
-        return "etatAdministratifUniteLegale:A"  # Fallback to simple query
-    
-    return final_query
+    # Use smart pattern-based query building
+    return build_smart_sirene_query_from_patterns(won_deals)
 
 def build_smart_sirene_query(historical_data: List[HistoryRow]) -> str:
     """Build smart SIRENE query based on advanced deal pattern analysis"""
@@ -1237,12 +1268,66 @@ def train(req: TrainRequest):
         if df.empty: 
             return {"ok": False, "error": "no rows"}
         
-        # Simple feature engineering
+        # Comprehensive feature engineering with 110 data points
         df = featurize_simple(df)
         
+        # Extract patterns from won deals using 110 data points
+        won_deals = df[df["deal_status"].str.lower() == "won"].copy()
+        lost_deals = df[df["deal_status"].str.lower() == "lost"].copy()
+        
+        print(f"Analyzing {len(won_deals)} won deals vs {len(lost_deals)} lost deals")
+        
+        # Analyze patterns in won deals
+        if len(won_deals) > 0:
+            # Employee range patterns
+            won_employee_ranges = won_deals["employee_range"].value_counts()
+            print(f"Won deals employee ranges: {dict(won_employee_ranges)}")
+            
+            # Legal category patterns
+            won_legal_categories = won_deals["legal_category"].value_counts()
+            print(f"Won deals legal categories: {dict(won_legal_categories)}")
+            
+            # Company size patterns
+            won_company_sizes = won_deals["company_size"].value_counts()
+            print(f"Won deals company sizes: {dict(won_company_sizes)}")
+            
+            # Geographic patterns
+            won_regions = won_deals["region"].value_counts()
+            won_cities = won_deals["city"].value_counts()
+            print(f"Won deals regions: {dict(won_regions)}")
+            print(f"Won deals cities: {dict(won_cities)}")
+            
+            # Industry patterns (APE codes)
+            won_ape_codes = won_deals["ape"].value_counts()
+            print(f"Won deals APE codes: {dict(won_ape_codes)}")
+            
+            # Age patterns
+            won_ages = won_deals["age_years"].describe()
+            print(f"Won deals age stats: {dict(won_ages)}")
+            
+            # Establishment count patterns
+            won_establishments = won_deals["establishment_count"].value_counts()
+            print(f"Won deals establishment counts: {dict(won_establishments)}")
+        
+        # Build enhanced training features using 110 data points
         Xtab = pd.DataFrame({
             "has_siren": df["has_siren"],
             "age_years": df["age_years"].fillna(-1),
+            "employee_range_score": df["employee_range_score"],
+            "is_employer_score": df["is_employer_score"],
+            "company_category_score": df["company_category_score"],
+            "legal_category_score": df["legal_category_score"],
+            "establishment_count_score": df["establishment_count_score"],
+            "company_size_indicator": df["company_size_indicator"],
+            "composite_tech_score": df["composite_tech_score"],
+            "composite_geographic_score": df["composite_geographic_score"],
+            "composite_maturity_score": df["composite_maturity_score"],
+            "composite_business_score": df["composite_business_score"],
+            "composite_establishment_score": df["composite_establishment_score"],
+            "composite_innovation_score": df["composite_innovation_score"],
+            "composite_stability_score": df["composite_stability_score"],
+            "composite_growth_score": df["composite_growth_score"],
+            "composite_lead_score": df["composite_lead_score"]
         }).fillna(0)
         
         y = (df["deal_status"].str.lower()=="won").astype(int).to_numpy()
@@ -1259,13 +1344,32 @@ def train(req: TrainRequest):
         else:
             clf = None
         
-        # Store artifacts
+        # Store artifacts with comprehensive pattern analysis
         artifacts = {
             "clf": clf,
             "hist_labels": y,
             "hist_texts": [f"{row.company_name} {row.ape or ''}" for row in req.rows],
-            "sklearn_available": SKLEARN_AVAILABLE
+            "sklearn_available": SKLEARN_AVAILABLE,
+            "won_deals_patterns": {
+                "employee_ranges": dict(won_deals["employee_range"].value_counts()) if len(won_deals) > 0 else {},
+                "legal_categories": dict(won_deals["legal_category"].value_counts()) if len(won_deals) > 0 else {},
+                "company_sizes": dict(won_deals["company_size"].value_counts()) if len(won_deals) > 0 else {},
+                "regions": dict(won_deals["region"].value_counts()) if len(won_deals) > 0 else {},
+                "cities": dict(won_deals["city"].value_counts()) if len(won_deals) > 0 else {},
+                "ape_codes": dict(won_deals["ape"].value_counts()) if len(won_deals) > 0 else {},
+                "age_stats": dict(won_deals["age_years"].describe()) if len(won_deals) > 0 else {},
+                "establishment_counts": dict(won_deals["establishment_count"].value_counts()) if len(won_deals) > 0 else {}
+            },
+            "training_features": list(Xtab.columns),
+            "feature_importance": None
         }
+        
+        # Calculate feature importance if model is available
+        if clf and hasattr(clf, 'feature_importances_'):
+            feature_importance = dict(zip(Xtab.columns, clf.feature_importances_))
+            artifacts["feature_importance"] = feature_importance
+            print(f"Top 5 most important features: {sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)[:5]}")
+        
         ARTIFACTS[tenant] = artifacts
         
         # Auto-discover leads after training for seamless UX
@@ -1536,7 +1640,18 @@ def train(req: TrainRequest):
             "model_version": f"{tenant}-v1-sirene",
             "discovered_leads": discovered_leads,  # Return all discovered leads (up to 10)
             "total_discovered": len(discovered_leads),
-            "message": f"Model trained successfully! Found {len(discovered_leads)} high-scoring leads from SIRENE database."
+            "message": f"Model trained successfully! Found {len(discovered_leads)} high-scoring leads from SIRENE database.",
+            "training_insights": {
+                "won_deals_patterns": artifacts["won_deals_patterns"],
+                "feature_importance": artifacts["feature_importance"],
+                "training_features": artifacts["training_features"],
+                "smart_query_criteria": "Based on won deal patterns: " + ", ".join([
+                    f"APE codes: {list(artifacts['won_deals_patterns']['ape_codes'].keys())[:2]}",
+                    f"Employee ranges: {list(artifacts['won_deals_patterns']['employee_ranges'].keys())[:2]}",
+                    f"Legal categories: {list(artifacts['won_deals_patterns']['legal_categories'].keys())[:2]}",
+                    f"Regions: {list(artifacts['won_deals_patterns']['regions'].keys())[:2]}"
+                ]) if len(won_deals) > 0 else "No patterns detected"
+            }
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
