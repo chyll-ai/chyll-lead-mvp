@@ -11,8 +11,6 @@ const UploadHistory: React.FC = () => {
   const [modelTrained, setModelTrained] = useState(false);
   
   // Enhanced training results
-  const [enrichedData, setEnrichedData] = useState<any[]>([]);
-  const [trainingAnalysis, setTrainingAnalysis] = useState<any>(null);
   const [hypotheses, setHypotheses] = useState<any>(null);
   const [discoveryCriteria, setDiscoveryCriteria] = useState<any>(null);
   const [showTrainingResults, setShowTrainingResults] = useState(false);
@@ -43,8 +41,6 @@ const UploadHistory: React.FC = () => {
       
       if (res.ok && res.enriched_data) {
         setModelTrained(true);
-        setEnrichedData(res.enriched_data);
-        setTrainingAnalysis(res.analysis);
         setHypotheses(res.hypotheses);
         setDiscoveryCriteria(res.discovery_criteria);
         setShowTrainingResults(true);
