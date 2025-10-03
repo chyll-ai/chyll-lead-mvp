@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple SIRENE-based lead scoring using pattern learning from user data
+Enhanced SIRENE-based lead scoring with data enrichment and age analysis
 """
 import os
 import sys
@@ -13,6 +13,7 @@ from pydantic import BaseModel
 import httpx
 import json
 from datetime import datetime
+import re
 
 # Add the parent directory to the path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,6 +37,62 @@ HTTPX_AVAILABLE = True
 
 # Global storage for learned patterns
 LEARNED_PATTERNS = {}
+
+# Legal Form Mapping (INSEE categorization)
+LEGAL_FORM_MAPPING = {
+    "5499": "Autres formes juridiques",
+    "5710": "SAS, société par actions simplifiée",
+    "5599": "Autres sociétés par actions",
+    "9220": "Association déclarée",
+    "7410": "SASU, société par actions simplifiée unipersonnelle",
+    "5499": "Autres formes juridiques",
+    "5710": "SAS, société par actions simplifiée",
+    "5599": "Autres sociétés par actions",
+    "9220": "Association déclarée",
+    "7410": "SASU, société par actions simplifiée unipersonnelle",
+    "5499": "Autres formes juridiques",
+    "5710": "SAS, société par actions simplifiée",
+    "5599": "Autres sociétés par actions",
+    "9220": "Association déclarée",
+    "7410": "SASU, société par actions simplifiée unipersonnelle"
+}
+
+# APE Code Mapping (Key business activities)
+APE_CODE_MAPPING = {
+    "62.01Z": "Programmation informatique",
+    "62.02A": "Conseil en systèmes et logiciels informatiques",
+    "63.11Z": "Traitement de données, hébergement et activités connexes",
+    "70.10Z": "Activités des sièges sociaux",
+    "55.10Z": "Hôtels et hébergement similaire",
+    "58.29C": "Édition de jeux électroniques",
+    "72.19Z": "Recherche-développement en autres sciences physiques et naturelles",
+    "71.12Z": "Activités d'architecture",
+    "71.11Z": "Activités d'architecture et d'ingénierie",
+    "62.03Z": "Gestion d'installations informatiques",
+    "63.12Z": "Portails Internet",
+    "63.91Z": "Activités des agences de presse",
+    "63.99Z": "Autres services d'information"
+}
+
+# Employee Range Mapping
+EMPLOYEE_RANGE_MAPPING = {
+    "NN": "Unité non-employeuse ou présumée non-employeuse",
+    "00": "0 salarié (ayant employé au cours de l'année)",
+    "01": "1 ou 2 salariés",
+    "02": "3 à 5 salariés", 
+    "03": "6 à 9 salariés",
+    "11": "10 à 19 salariés",
+    "12": "20 à 49 salariés",
+    "21": "50 à 99 salariés",
+    "22": "100 à 199 salariés",
+    "31": "200 à 249 salariés",
+    "32": "250 à 499 salariés",
+    "41": "500 à 999 salariés",
+    "42": "1 000 à 1 999 salariés",
+    "51": "2 000 à 4 999 salariés",
+    "52": "5 000 à 9 999 salariés",
+    "53": "10 000 salariés et plus"
+}
 
 class TrainRow(BaseModel):
     company_name: str
@@ -64,25 +121,57 @@ class DiscoverResponse(BaseModel):
     total_found: int
     patterns_used: Dict[str, Any]
 
-def get_age_range(created_year: int) -> str:
-    """Convert creation year to age range"""
-    if not created_year or created_year == 0:
-        return "unknown"
+def calculate_age_and_category(creation_date: str) -> tuple[int, str]:
+    """Calculate company age and category from creation date"""
+    if not creation_date:
+        return None, "unknown"
     
-    current_year = datetime.now().year
-    age = current_year - created_year
+    try:
+        # Parse date (format: YYYY-MM-DD)
+        creation_year = int(creation_date[:4])
+        current_year = datetime.now().year
+        age = current_year - creation_year
+        
+        if age < 2:
+            category = "startup"
+        elif age < 5:
+            category = "growth"
+        elif age < 10:
+            category = "mature"
+        else:
+            category = "established"
+            
+        return age, category
+    except:
+        return None, "unknown"
+
+def get_legal_form_description(code: str) -> str:
+    """Get human-readable legal form description"""
+    return LEGAL_FORM_MAPPING.get(code, f"Forme juridique {code}")
+
+def get_ape_description(code: str) -> str:
+    """Get human-readable APE activity description"""
+    return APE_CODE_MAPPING.get(code, f"Activité {code}")
+
+def get_employee_description(code: str) -> str:
+    """Get human-readable employee range description"""
+    return EMPLOYEE_RANGE_MAPPING.get(code, f"Effectif {code}")
+
+def clean_company_name(name: str) -> str:
+    """Clean company name for Sirene search"""
+    if not name:
+        return ""
     
-    if age < 2:
-        return "startup"
-    elif age < 5:
-        return "growth"
-    elif age < 10:
-        return "mature"
-    else:
-        return "established"
+    # Remove common suffixes and clean up
+    cleaned = name.upper().strip()
+    cleaned = re.sub(r'\s+(SAS|SARL|SA|SASU|EURL|SNC|SCI|ASSOCIATION|ASSOC|LTD|INC|CORP)$', '', cleaned)
+    cleaned = re.sub(r'[^\w\s\-&]', ' ', cleaned)  # Remove special chars except & and -
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()  # Normalize spaces
+    
+    return cleaned
 
 def analyze_user_patterns(df: pd.DataFrame) -> Dict[str, Any]:
-    """Extract positive and negative patterns from user's deals"""
+    """Extract positive and negative patterns from user's deals with enhanced analysis"""
     print(f"[DEBUG] Analyzing patterns from {len(df)} total deals")
     
     # Clean and prepare data
@@ -91,7 +180,8 @@ def analyze_user_patterns(df: pd.DataFrame) -> Dict[str, Any]:
     df_clean['postal_code'] = df_clean['postal_code'].fillna('').astype(str)
     df_clean['employee_range'] = df_clean['employee_range'].fillna('').astype(str)
     df_clean['legal_form'] = df_clean['legal_form'].fillna('').astype(str)
-    df_clean['created_year'] = pd.to_numeric(df_clean['created_year'], errors='coerce')
+    df_clean['company_category'] = df_clean['company_category'].fillna('').astype(str)
+    df_clean['age_category'] = df_clean['age_category'].fillna('').astype(str)
     
     # Separate won and lost deals
     won_deals = df_clean[df_clean['deal_status'].str.lower() == 'won']
@@ -104,7 +194,9 @@ def analyze_user_patterns(df: pd.DataFrame) -> Dict[str, Any]:
             'positive_patterns': {},
             'negative_patterns': {},
             'total_won': 0,
-            'total_lost': 0
+            'total_lost': 0,
+            'age_analysis': {},
+            'company_category_analysis': {}
         }
     
     # Analyze positive patterns (what's common in won deals)
@@ -115,7 +207,8 @@ def analyze_user_patterns(df: pd.DataFrame) -> Dict[str, Any]:
             'region_distribution': won_deals['postal_code'].str[:2].value_counts(normalize=True).to_dict(),
             'size_distribution': won_deals['employee_range'].value_counts(normalize=True).to_dict(),
             'legal_form_distribution': won_deals['legal_form'].value_counts(normalize=True).to_dict(),
-            'age_distribution': won_deals['created_year'].apply(get_age_range).value_counts(normalize=True).to_dict()
+            'age_distribution': won_deals['age_category'].value_counts(normalize=True).to_dict(),
+            'company_category_distribution': won_deals['company_category'].value_counts(normalize=True).to_dict()
         }
     
     # Analyze negative patterns (what's common in lost deals)
@@ -126,14 +219,71 @@ def analyze_user_patterns(df: pd.DataFrame) -> Dict[str, Any]:
             'region_distribution': lost_deals['postal_code'].str[:2].value_counts(normalize=True).to_dict(),
             'size_distribution': lost_deals['employee_range'].value_counts(normalize=True).to_dict(),
             'legal_form_distribution': lost_deals['legal_form'].value_counts(normalize=True).to_dict(),
-            'age_distribution': lost_deals['created_year'].apply(get_age_range).value_counts(normalize=True).to_dict()
+            'age_distribution': lost_deals['age_category'].value_counts(normalize=True).to_dict(),
+            'company_category_distribution': lost_deals['company_category'].value_counts(normalize=True).to_dict()
         }
+    
+    # Age analysis
+    age_analysis = {}
+    if len(won_deals) > 0 and len(lost_deals) > 0:
+        won_age_dist = won_deals['age_category'].value_counts(normalize=True)
+        lost_age_dist = lost_deals['age_category'].value_counts(normalize=True)
+        
+        age_analysis = {
+            'won_age_distribution': won_age_dist.to_dict(),
+            'lost_age_distribution': lost_age_dist.to_dict(),
+            'age_significance': {}
+        }
+        
+        # Calculate significance for each age category
+        for age_cat in set(won_age_dist.index) | set(lost_age_dist.index):
+            won_pct = won_age_dist.get(age_cat, 0)
+            lost_pct = lost_age_dist.get(age_cat, 0)
+            total_pct = won_pct + lost_pct
+            
+            if total_pct > 0:
+                significance = abs(won_pct - lost_pct) / total_pct
+                age_analysis['age_significance'][age_cat] = {
+                    'significance': significance,
+                    'won_percentage': won_pct,
+                    'lost_percentage': lost_pct,
+                    'is_significant': significance > 0.2  # 20% difference threshold
+                }
+    
+    # Company category analysis
+    company_category_analysis = {}
+    if len(won_deals) > 0 and len(lost_deals) > 0:
+        won_cat_dist = won_deals['company_category'].value_counts(normalize=True)
+        lost_cat_dist = lost_deals['company_category'].value_counts(normalize=True)
+        
+        company_category_analysis = {
+            'won_category_distribution': won_cat_dist.to_dict(),
+            'lost_category_distribution': lost_cat_dist.to_dict(),
+            'category_significance': {}
+        }
+        
+        # Calculate significance for each company category
+        for cat in set(won_cat_dist.index) | set(lost_cat_dist.index):
+            won_pct = won_cat_dist.get(cat, 0)
+            lost_pct = lost_cat_dist.get(cat, 0)
+            total_pct = won_pct + lost_pct
+            
+            if total_pct > 0:
+                significance = abs(won_pct - lost_pct) / total_pct
+                company_category_analysis['category_significance'][cat] = {
+                    'significance': significance,
+                    'won_percentage': won_pct,
+                    'lost_percentage': lost_pct,
+                    'is_significant': significance > 0.2
+                }
     
     patterns = {
         'positive_patterns': positive_patterns,
         'negative_patterns': negative_patterns,
         'total_won': len(won_deals),
-        'total_lost': len(lost_deals)
+        'total_lost': len(lost_deals),
+        'age_analysis': age_analysis,
+        'company_category_analysis': company_category_analysis
     }
     
     print(f"[DEBUG] Positive patterns extracted:")
@@ -216,48 +366,52 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
                     print(f"[DEBUG] Sample postal_code: {adresse.get('codePostalEtablissement', 'MISSING')}")
                     print(f"[DEBUG] Sample city: {adresse.get('libelleCommuneEtablissement', 'MISSING')}")
                 
-                # Extract all available data from SIRENE response
+                # Extract and enrich data from SIRENE response
+                ape_code = unite_legale.get('activitePrincipaleUniteLegale', '')
+                legal_form_code = unite_legale.get('categorieJuridiqueUniteLegale', '')
+                employee_range = unite_legale.get('trancheEffectifsUniteLegale', '')
+                creation_date = unite_legale.get('dateCreationUniteLegale', '')
+                age_years, age_category = calculate_age_and_category(creation_date)
+                
                 company = {
-                    'siren': etablissement.get('siren', ''),  # siren is at establishment level
+                    # Core identification
+                    'siren': etablissement.get('siren', ''),
                     'siret': etablissement.get('siret', ''),
                     'company_name': unite_legale.get('denominationUniteLegale') or 
                                    unite_legale.get('denominationUsuelle1UniteLegale') or 
                                    unite_legale.get('nomUniteLegale') or 
                                    unite_legale.get('sigleUniteLegale') or '',
-                    'ape': unite_legale.get('activitePrincipaleUniteLegale', ''),
-                    'legal_form': unite_legale.get('categorieJuridiqueUniteLegale', ''),
+                    
+                    # Activity and legal information
+                    'ape': ape_code,
+                    'ape_description': get_ape_description(ape_code),
+                    'legal_form': legal_form_code,
+                    'legal_form_description': get_legal_form_description(legal_form_code),
+                    
+                    # Location information
                     'postal_code': adresse.get('codePostalEtablissement', ''),
                     'city': adresse.get('libelleCommuneEtablissement', ''),
-                    'employee_range': unite_legale.get('trancheEffectifsUniteLegale', ''),
-                    'created_year': int(unite_legale.get('dateCreationUniteLegale', '0')[:4]) if unite_legale.get('dateCreationUniteLegale') else None,
+                    'region': adresse.get('codePostalEtablissement', '')[:2] if adresse.get('codePostalEtablissement') else '',
+                    'location': f"{adresse.get('libelleCommuneEtablissement', '')}, {adresse.get('codePostalEtablissement', '')}".strip(', '),
+                    
+                    # Company characteristics
+                    'employee_range': employee_range,
+                    'employee_description': get_employee_description(employee_range),
+                    'age_years': age_years,
+                    'age_category': age_category,
+                    'creation_date': creation_date,
                     'is_active': unite_legale.get('etatAdministratifUniteLegale') == 'A',
-                    # Additional fields from SIRENE
-                    'address': f"{adresse.get('numeroVoieEtablissement', '')} {adresse.get('typeVoieEtablissement', '')} {adresse.get('libelleVoieEtablissement', '')}".strip(),
-                    'complement_address': adresse.get('complementAdresseEtablissement', ''),
-                    'cedex': adresse.get('codeCedexEtablissement', ''),
-                    'cedex_label': adresse.get('libelleCedexEtablissement', ''),
-                    'commune_code': adresse.get('codeCommuneEtablissement', ''),
-                    'is_headquarters': etablissement.get('etablissementSiege', False),
-                    'establishment_activity': etablissement.get('activitePrincipaleRegistreMetiersEtablissement', ''),
-                    'establishment_employees': etablissement.get('trancheEffectifsEtablissement', ''),
-                    'establishment_creation_date': etablissement.get('dateCreationEtablissement', ''),
-                    'nic': etablissement.get('nic', ''),
-                    'diffusion_status': etablissement.get('statutDiffusionEtablissement', ''),
-                    'legal_unit_diffusion_status': unite_legale.get('statutDiffusionUniteLegale', ''),
-                    'legal_unit_creation_date': unite_legale.get('dateCreationUniteLegale', ''),
-                    'legal_unit_employees': unite_legale.get('trancheEffectifsUniteLegale', ''),
-                    'legal_unit_employees_year': unite_legale.get('anneeEffectifsUniteLegale', ''),
-                    'is_employer': unite_legale.get('caractereEmployeurUniteLegale', ''),
+                    'is_ess': unite_legale.get('economieSocialeSolidaireUniteLegale') == 'O',
+                    'is_mission_company': unite_legale.get('societeMissionUniteLegale') == 'O',
+                    
+                    # Company category and size
                     'company_category': unite_legale.get('categorieEntreprise', ''),
                     'company_category_year': unite_legale.get('anneeCategorieEntreprise', ''),
-                    'social_economy': unite_legale.get('economieSocialeSolidaireUniteLegale', ''),
-                    'mission_company': unite_legale.get('societeMissionUniteLegale', ''),
+                    
+                    # Additional useful fields
+                    'is_headquarters': etablissement.get('etablissementSiege', False),
                     'association_id': unite_legale.get('identifiantAssociationUniteLegale', ''),
-                    'nomenclature_activity': unite_legale.get('nomenclatureActivitePrincipaleUniteLegale', ''),
-                    'headquarters_nic': unite_legale.get('nicSiegeUniteLegale', ''),
-                    'last_processing_date': unite_legale.get('dateDernierTraitementUniteLegale', ''),
-                    'establishment_last_processing_date': etablissement.get('dateDernierTraitementEtablissement', ''),
-                    'periods_count': etablissement.get('nombrePeriodesEtablissement', 0)
+                    'last_processing_date': unite_legale.get('dateDernierTraitementUniteLegale', '')
                 }
                 companies.append(company)
             
@@ -268,8 +422,127 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
         print(f"[ERROR] SIRENE API error: {e}")
         return []
 
+def generate_hypotheses(patterns: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate hypotheses based on pattern analysis"""
+    hypotheses = {
+        'strong_patterns': [],
+        'moderate_patterns': [],
+        'weak_patterns': []
+    }
+    
+    # Analyze APE patterns
+    ape_pos = patterns.get('positive_patterns', {}).get('ape_distribution', {})
+    ape_neg = patterns.get('negative_patterns', {}).get('ape_distribution', {})
+    
+    for ape_code, freq in ape_pos.items():
+        if ape_code and freq > 0.3:  # 30% threshold for strong pattern
+            neg_freq = ape_neg.get(ape_code, 0)
+            if neg_freq < freq * 0.5:  # Much more common in won deals
+                confidence = "high" if freq > 0.5 else "medium"
+                hypotheses[f"{confidence}_patterns"].append({
+                    'pattern': f"Companies with APE code {ape_code} ({get_ape_description(ape_code)}) tend to win more deals",
+                    'confidence': confidence,
+                    'evidence': f"{freq:.1%} of won deals vs {neg_freq:.1%} of lost deals",
+                    'category': 'activity'
+                })
+    
+    # Analyze company category patterns
+    cat_pos = patterns.get('positive_patterns', {}).get('company_category_distribution', {})
+    cat_neg = patterns.get('negative_patterns', {}).get('company_category_distribution', {})
+    
+    for category, freq in cat_pos.items():
+        if category and freq > 0.3:
+            neg_freq = cat_neg.get(category, 0)
+            if neg_freq < freq * 0.5:
+                confidence = "high" if freq > 0.5 else "medium"
+                hypotheses[f"{confidence}_patterns"].append({
+                    'pattern': f"{category} companies tend to win more deals",
+                    'confidence': confidence,
+                    'evidence': f"{freq:.1%} of won deals vs {neg_freq:.1%} of lost deals",
+                    'category': 'company_size'
+                })
+    
+    # Analyze age patterns
+    age_analysis = patterns.get('age_analysis', {})
+    age_significance = age_analysis.get('age_significance', {})
+    
+    for age_cat, data in age_significance.items():
+        if data.get('is_significant', False):
+            won_pct = data.get('won_percentage', 0)
+            lost_pct = data.get('lost_percentage', 0)
+            significance = data.get('significance', 0)
+            
+            confidence = "high" if significance > 0.4 else "medium"
+            hypotheses[f"{confidence}_patterns"].append({
+                'pattern': f"{age_cat.title()} companies show different win rates",
+                'confidence': confidence,
+                'evidence': f"{won_pct:.1%} won vs {lost_pct:.1%} lost (significance: {significance:.1%})",
+                'category': 'age'
+            })
+    
+    # Analyze region patterns
+    region_pos = patterns.get('positive_patterns', {}).get('region_distribution', {})
+    region_neg = patterns.get('negative_patterns', {}).get('region_distribution', {})
+    
+    for region, freq in region_pos.items():
+        if region and freq > 0.2:  # Lower threshold for regions
+            neg_freq = region_neg.get(region, 0)
+            if neg_freq < freq * 0.7:
+                confidence = "medium" if freq > 0.4 else "weak"
+                hypotheses[f"{confidence}_patterns"].append({
+                    'pattern': f"Companies in region {region} show positive trend",
+                    'confidence': confidence,
+                    'evidence': f"{freq:.1%} of won deals vs {neg_freq:.1%} of lost deals",
+                    'category': 'location'
+                })
+    
+    return hypotheses
+
+def build_discovery_criteria(patterns: Dict[str, Any]) -> Dict[str, Any]:
+    """Build discovery criteria based on learned patterns"""
+    criteria = {
+        'primary_filters': {
+            'etat_administratif': 'A'  # Active companies only
+        },
+        'secondary_filters': {},
+        'scoring_weights': {}
+    }
+    
+    # Get significant patterns
+    pos_patterns = patterns.get('positive_patterns', {})
+    
+    # Company category filters (highest priority)
+    cat_dist = pos_patterns.get('company_category_distribution', {})
+    significant_categories = [cat for cat, freq in cat_dist.items() if freq >= 0.2 and cat]
+    if significant_categories:
+        criteria['primary_filters']['company_category'] = significant_categories
+        criteria['scoring_weights']['company_category'] = 0.4
+    
+    # Age category filters
+    age_dist = pos_patterns.get('age_distribution', {})
+    significant_ages = [age for age, freq in age_dist.items() if freq >= 0.2 and age]
+    if significant_ages:
+        criteria['primary_filters']['age_category'] = significant_ages
+        criteria['scoring_weights']['age_category'] = 0.3
+    
+    # APE code filters
+    ape_dist = pos_patterns.get('ape_distribution', {})
+    significant_apes = [ape for ape, freq in ape_dist.items() if freq >= 0.15 and ape]
+    if significant_apes:
+        criteria['secondary_filters']['ape_codes'] = significant_apes
+        criteria['scoring_weights']['ape_code'] = 0.2
+    
+    # Region filters
+    region_dist = pos_patterns.get('region_distribution', {})
+    significant_regions = [region for region, freq in region_dist.items() if freq >= 0.15 and region]
+    if significant_regions:
+        criteria['secondary_filters']['regions'] = significant_regions
+        criteria['scoring_weights']['region'] = 0.1
+    
+    return criteria
+
 def score_company(company: Dict[str, Any], patterns: Dict[str, Any]) -> float:
-    """Score company based on positive and negative patterns with weighted scoring"""
+    """Score company based on positive and negative patterns with enhanced scoring"""
     if patterns['total_won'] == 0 and patterns['total_lost'] == 0:
         return 0.5  # Default score if no patterns learned
     
@@ -281,47 +554,47 @@ def score_company(company: Dict[str, Any], patterns: Dict[str, Any]) -> float:
     pos_patterns = patterns.get('positive_patterns', {})
     neg_patterns = patterns.get('negative_patterns', {})
     
-    # APE code scoring (40% weight - most important)
+    # Company category scoring (40% weight - most important)
+    company_category = company.get('company_category', '')
+    if company_category in pos_patterns.get('company_category_distribution', {}):
+        cat_freq = pos_patterns['company_category_distribution'][company_category]
+        positive_score += 0.4 * cat_freq
+        total_weight += 0.4
+    if company_category in neg_patterns.get('company_category_distribution', {}):
+        cat_freq = neg_patterns['company_category_distribution'][company_category]
+        negative_score += 0.4 * cat_freq
+    
+    # Age category scoring (30% weight)
+    age_category = company.get('age_category', '')
+    if age_category in pos_patterns.get('age_distribution', {}):
+        age_freq = pos_patterns['age_distribution'][age_category]
+        positive_score += 0.3 * age_freq
+        total_weight += 0.3
+    if age_category in neg_patterns.get('age_distribution', {}):
+        age_freq = neg_patterns['age_distribution'][age_category]
+        negative_score += 0.3 * age_freq
+    
+    # APE code scoring (20% weight)
     ape = company.get('ape', '')
     if ape in pos_patterns.get('ape_distribution', {}):
         ape_freq = pos_patterns['ape_distribution'][ape]
-        positive_score += 0.4 * ape_freq
-        total_weight += 0.4
+        positive_score += 0.2 * ape_freq
+        total_weight += 0.2
     if ape in neg_patterns.get('ape_distribution', {}):
         ape_freq = neg_patterns['ape_distribution'][ape]
-        negative_score += 0.4 * ape_freq
+        negative_score += 0.2 * ape_freq
     
-    # Region scoring (25% weight)
+    # Region scoring (10% weight)
     postal_code = company.get('postal_code', '')
     if len(postal_code) >= 2:
         region = postal_code[:2]
         if region in pos_patterns.get('region_distribution', {}):
             region_freq = pos_patterns['region_distribution'][region]
-            positive_score += 0.25 * region_freq
-            total_weight += 0.25
+            positive_score += 0.1 * region_freq
+            total_weight += 0.1
         if region in neg_patterns.get('region_distribution', {}):
             region_freq = neg_patterns['region_distribution'][region]
-            negative_score += 0.3 * region_freq
-    
-    # Company size scoring (20% weight)
-    employee_range = company.get('employee_range', '')
-    if employee_range in pos_patterns.get('size_distribution', {}):
-        size_freq = pos_patterns['size_distribution'][employee_range]
-        positive_score += 0.2 * size_freq
-        total_weight += 0.2
-    if employee_range in neg_patterns.get('size_distribution', {}):
-        size_freq = neg_patterns['size_distribution'][employee_range]
-        negative_score += 0.2 * size_freq
-    
-    # Legal form scoring (15% weight)
-    legal_form = company.get('legal_form', '')
-    if legal_form in pos_patterns.get('legal_form_distribution', {}):
-        legal_freq = pos_patterns['legal_form_distribution'][legal_form]
-        positive_score += 0.15 * legal_freq
-        total_weight += 0.15
-    if legal_form in neg_patterns.get('legal_form_distribution', {}):
-        legal_freq = neg_patterns['legal_form_distribution'][legal_form]
-        negative_score += 0.15 * legal_freq
+            negative_score += 0.1 * region_freq
     
     # Calculate final score: positive patterns boost, negative patterns reduce
     if total_weight > 0:
@@ -379,36 +652,143 @@ def health():
         "httpx_available": HTTPX_AVAILABLE
     }
 
+async def search_sirene_by_name_and_location(company_name: str, postal_code: str, city: str) -> dict:
+    """Search Sirene by company name and location"""
+    if not SIRENE_TOKEN or not company_name:
+        return {}
+    
+    try:
+        # Clean company name for search
+        clean_name = clean_company_name(company_name)
+        if not clean_name:
+            return {}
+        
+        # Build search query
+        query_parts = [f'denominationUniteLegale:"{clean_name}"']
+        
+        # Add location filters if available
+        if postal_code:
+            query_parts.append(f'codePostalEtablissement:{postal_code}')
+        elif city:
+            # Try to match city name
+            clean_city = city.upper().strip()
+            query_parts.append(f'libelleCommuneEtablissement:"{clean_city}"')
+        
+        query = " AND ".join(query_parts)
+        
+        params = {
+            "q": query,
+            "nombre": 5,  # Get top 5 matches
+            "debut": 1
+        }
+        
+        print(f"[DEBUG] Searching Sirene for: {company_name} in {city}, {postal_code}")
+        print(f"[DEBUG] Query: {query}")
+        
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "X-INSEE-Api-Key-Integration": SIRENE_TOKEN,
+                "Accept": "application/json"
+            }
+            
+            response = await client.get(f"{SIRENE_BASE_URL}/siret", headers=headers, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                etablissements = data.get('etablissements', [])
+                
+                if etablissements:
+                    # Return the best match (first result)
+                    return extract_enriched_sirene_data(etablissements[0])
+                    
+    except Exception as e:
+        print(f"[ERROR] Sirene search failed for {company_name}: {e}")
+    
+    return {}
+
+def extract_enriched_sirene_data(etablissement: dict) -> dict:
+    """Extract enriched Sirene data from etablissement response"""
+    unite_legale = etablissement.get('uniteLegale', {})
+    adresse = etablissement.get('adresseEtablissement', {})
+    
+    ape_code = unite_legale.get('activitePrincipaleUniteLegale', '')
+    legal_form_code = unite_legale.get('categorieJuridiqueUniteLegale', '')
+    employee_range = unite_legale.get('trancheEffectifsUniteLegale', '')
+    creation_date = unite_legale.get('dateCreationUniteLegale', '')
+    age_years, age_category = calculate_age_and_category(creation_date)
+    
+    return {
+        # Core identification
+        'siren': etablissement.get('siren', ''),
+        'siret': etablissement.get('siret', ''),
+        'company_name': unite_legale.get('denominationUniteLegale') or 
+                       unite_legale.get('denominationUsuelle1UniteLegale') or 
+                       unite_legale.get('nomUniteLegale') or 
+                       unite_legale.get('sigleUniteLegale') or '',
+        
+        # Activity and legal information
+        'ape': ape_code,
+        'ape_description': get_ape_description(ape_code),
+        'legal_form': legal_form_code,
+        'legal_form_description': get_legal_form_description(legal_form_code),
+        
+        # Location information
+        'postal_code': adresse.get('codePostalEtablissement', ''),
+        'city': adresse.get('libelleCommuneEtablissement', ''),
+        'region': adresse.get('codePostalEtablissement', '')[:2] if adresse.get('codePostalEtablissement') else '',
+        'location': f"{adresse.get('libelleCommuneEtablissement', '')}, {adresse.get('codePostalEtablissement', '')}".strip(', '),
+        
+        # Company characteristics
+        'employee_range': employee_range,
+        'employee_description': get_employee_description(employee_range),
+        'age_years': age_years,
+        'age_category': age_category,
+        'creation_date': creation_date,
+        'is_active': unite_legale.get('etatAdministratifUniteLegale') == 'A',
+        'is_ess': unite_legale.get('economieSocialeSolidaireUniteLegale') == 'O',
+        'is_mission_company': unite_legale.get('societeMissionUniteLegale') == 'O',
+        
+        # Company category and size
+        'company_category': unite_legale.get('categorieEntreprise', ''),
+        'company_category_year': unite_legale.get('anneeCategorieEntreprise', ''),
+        
+        # Additional useful fields
+        'is_headquarters': etablissement.get('etablissementSiege', False),
+        'association_id': unite_legale.get('identifiantAssociationUniteLegale', ''),
+        'last_processing_date': unite_legale.get('dateDernierTraitementUniteLegale', '')
+    }
+
 async def enrich_user_data_with_sirene(df: pd.DataFrame) -> pd.DataFrame:
-    """Enrich user data with SIRENE information"""
+    """Enrich user data with SIRENE information using name and location"""
     print(f"[DEBUG] Enriching {len(df)} companies with SIRENE data...")
     
     enriched_rows = []
+    success_count = 0
+    
     for _, row in df.iterrows():
         company_name = row.get('company_name', '')
-        siren = row.get('siren', '')
+        postal_code = row.get('postal_code', '')
+        city = row.get('city', '')
         
-        # Try to find company in SIRENE
-        sirene_data = None
-        if siren:
-            # Search by SIREN
-            sirene_data = await search_sirene_by_siren(siren)
-        elif company_name:
-            # Search by company name
-            sirene_data = await search_sirene_by_name(company_name)
+        # Try to find company in Sirene
+        sirene_data = await search_sirene_by_name_and_location(company_name, postal_code, city)
         
-        # Merge user data with SIRENE data
+        # Merge user data with Sirene data
         enriched_row = row.to_dict()
         if sirene_data:
             enriched_row.update(sirene_data)
-            print(f"[DEBUG] Enriched {company_name} with SIRENE data")
+            success_count += 1
+            print(f"[DEBUG] Enriched {company_name} with Sirene data")
         else:
-            print(f"[DEBUG] No SIRENE data found for {company_name}")
+            print(f"[DEBUG] No Sirene data found for {company_name}")
+            # Keep original data but mark as not enriched
+            enriched_row['enrichment_status'] = 'not_found'
         
         enriched_rows.append(enriched_row)
     
     enriched_df = pd.DataFrame(enriched_rows)
     print(f"[DEBUG] Enriched dataset shape: {enriched_df.shape}")
+    print(f"[DEBUG] Successfully enriched {success_count}/{len(df)} companies ({success_count/len(df)*100:.1f}%)")
+    
     return enriched_df
 
 async def search_sirene_by_siren(siren: str) -> dict:
@@ -566,7 +946,7 @@ async def find_similar_companies(patterns: dict, limit: int = 50) -> pd.DataFram
 
 @app.post("/train")
 async def train(req: TrainRequest):
-    """Enhanced training with SIRENE enrichment and similarity expansion"""
+    """Enhanced training with Sirene enrichment and pattern analysis"""
     try:
         print(f"[DEBUG] Enhanced training with {len(req.rows)} rows")
         
@@ -577,235 +957,105 @@ async def train(req: TrainRequest):
         if df.empty:
             return {"ok": False, "error": "no rows"}
         
-        # Step 1: Enrich user data with SIRENE information
+        # Step 1: Enrich user data with Sirene information
         enriched_df = await enrich_user_data_with_sirene(df)
         
         # Step 2: Analyze patterns from enriched data
         patterns = analyze_user_patterns(enriched_df)
         print(f"[DEBUG] Patterns extracted from enriched data")
         
-        # Step 3: Find similar companies based on patterns
-        similar_df = await find_similar_companies(patterns, limit=100)
+        # Step 3: Generate hypotheses
+        hypotheses = generate_hypotheses(patterns)
         
-        # Step 4: Combine original + enriched + similar data
-        # Add similarity labels to similar companies
-        if len(similar_df) > 0:
-            # For similar companies, we'll use the pattern analysis to determine if they should be positive or negative
-            # This is a simplified approach - in practice, you might want more sophisticated similarity scoring
-            similar_df['deal_status'] = 'similar'  # Mark as similar for now
+        # Step 4: Build discovery criteria
+        discovery_criteria = build_discovery_criteria(patterns)
         
-        # Step 5: Re-analyze patterns on the expanded dataset
-        if len(similar_df) > 0:
-            # Combine enriched data with similar companies
-            combined_df = pd.concat([enriched_df, similar_df], ignore_index=True)
-            print(f"[DEBUG] Combined dataset shape: {combined_df.shape}")
-            
-            # Re-analyze patterns on the expanded dataset
-            final_patterns = analyze_user_patterns(combined_df)
-        else:
-            final_patterns = patterns
+        # Step 5: Prepare enriched data for frontend
+        enriched_data = []
+        for _, row in enriched_df.iterrows():
+            enriched_data.append({
+                # Core identification
+                "company_name": row.get("company_name", ""),
+                "deal_status": row.get("deal_status", ""),
+                "siren": row.get("siren", ""),
+                "siret": row.get("siret", ""),
+                
+                # Activity and legal information
+                "ape": row.get("ape", ""),
+                "ape_description": row.get("ape_description", ""),
+                "legal_form": row.get("legal_form", ""),
+                "legal_form_description": row.get("legal_form_description", ""),
+                
+                # Location information
+                "postal_code": row.get("postal_code", ""),
+                "city": row.get("city", ""),
+                "region": row.get("region", ""),
+                "location": row.get("location", ""),
+                
+                # Company characteristics
+                "employee_range": row.get("employee_range", ""),
+                "employee_description": row.get("employee_description", ""),
+                "age_years": row.get("age_years"),
+                "age_category": row.get("age_category", ""),
+                "creation_date": row.get("creation_date", ""),
+                "is_active": row.get("is_active", False),
+                "is_ess": row.get("is_ess", False),
+                "is_mission_company": row.get("is_mission_company", False),
+                
+                # Company category and size
+                "company_category": row.get("company_category", ""),
+                "company_category_year": row.get("company_category_year", ""),
+                
+                # Additional fields
+                "is_headquarters": row.get("is_headquarters", False),
+                "association_id": row.get("association_id", ""),
+                "last_processing_date": row.get("last_processing_date", ""),
+                "enrichment_status": row.get("enrichment_status", "enriched")
+            })
         
         # Store patterns for this tenant
-        LEARNED_PATTERNS[req.tenant_id] = final_patterns
+        LEARNED_PATTERNS[req.tenant_id] = patterns
         
-        # Automatically discover companies using the learned patterns
-        print(f"[DEBUG] Auto-discovering companies after training...")
-        try:
-            # Build SIRENE filters from positive patterns (only strong patterns)
-            sirene_filters = build_sirene_filters(patterns, min_frequency=0.1)
-            print(f"[DEBUG] Built SIRENE filters: {sirene_filters}")
-            
-            # Fetch companies from SIRENE (already filtered by winning patterns)
-            companies = await fetch_sirene_companies(sirene_filters, limit=20)
-            print(f"[DEBUG] Fetched {len(companies)} companies from SIRENE (pre-filtered by winning patterns)")
-            
-            # Score companies (they should already be high probability due to server-side filtering)
-            scored_companies = []
-            for company in companies:
-                score = score_company(company, patterns)
-                
-                # Build reasons based on pattern matches
-                reasons = []
-                ape = company.get("ape", "")
-                region = company.get("postal_code", "")[:2] if company.get("postal_code") else ""
-                
-                # Build detailed reasons based on pattern matches
-                if ape in patterns['positive_patterns'].get('ape_distribution', {}):
-                    ape_freq = patterns['positive_patterns']['ape_distribution'][ape]
-                    reasons.append(f"Winning APE code {ape} ({ape_freq:.1%} of wins)")
-                
-                if region in patterns['positive_patterns'].get('region_distribution', {}):
-                    region_freq = patterns['positive_patterns']['region_distribution'][region]
-                    reasons.append(f"Winning region {region} ({region_freq:.1%} of wins)")
-                
-                # Add company size if available
-                employee_range = company.get("employee_range", "")
-                if employee_range in patterns['positive_patterns'].get('size_distribution', {}):
-                    size_freq = patterns['positive_patterns']['size_distribution'][employee_range]
-                    reasons.append(f"Winning size {employee_range} ({size_freq:.1%} of wins)")
-                
-                # Add legal form if available
-                legal_form = company.get("legal_form", "")
-                if legal_form in patterns['positive_patterns'].get('legal_form_distribution', {}):
-                    legal_freq = patterns['positive_patterns']['legal_form_distribution'][legal_form]
-                    reasons.append(f"Winning legal form {legal_form} ({legal_freq:.1%} of wins)")
-                
-                # Get location info using SIRENE postal code
-                city = company.get("city", "")
-                postal_code = company.get("postal_code", "")
-                
-                # Use postal code as primary location identifier
-                if postal_code:
-                    location = f"{city}, {postal_code}" if city else postal_code
-                elif city:
-                    location = city
-                else:
-                    location = "N/A"
-                
-                # Calculate derived fields
-                siren = company.get("siren", "")
-                nic_siege = company.get("headquarters_nic", "")
-                seat_siret = f"{siren}{nic_siege}" if siren and nic_siege else ""
-                
-                # Company size labels
-                headcount_codes = {
-                    "NN": "Non employeur / inconnu",
-                    "00": "0 salarié (N)",
-                    "01": "1–2",
-                    "02": "3–5", 
-                    "03": "6–9",
-                    "11": "10–19",
-                    "12": "20–49",
-                    "21": "50–99",
-                    "22": "100–199",
-                    "31": "200–249",
-                    "32": "250–499",
-                    "41": "500–999",
-                    "42": "1 000–1 999",
-                    "51": "2 000–4 999",
-                    "52": "5 000–9 999",
-                    "53": "10 000+"
+        # Calculate enrichment success rate
+        enriched_count = len([d for d in enriched_data if d.get("siren")])
+        enrichment_rate = enriched_count / len(enriched_data) if enriched_data else 0
+        
+        return {
+            "ok": True,
+            "enriched_data": enriched_data,
+            "analysis": {
+                "total_companies": len(df),
+                "won_companies": patterns['total_won'],
+                "lost_companies": patterns['total_lost'],
+                "enrichment_success_rate": f"{enrichment_rate:.1%}",
+                "patterns_analysis": {
+                    "ape_distribution": {
+                        "won": patterns['positive_patterns'].get('ape_distribution', {}),
+                        "lost": patterns['negative_patterns'].get('ape_distribution', {})
+                    },
+                    "region_distribution": {
+                        "won": patterns['positive_patterns'].get('region_distribution', {}),
+                        "lost": patterns['negative_patterns'].get('region_distribution', {})
+                    },
+                    "age_distribution": {
+                        "won": patterns['positive_patterns'].get('age_distribution', {}),
+                        "lost": patterns['negative_patterns'].get('age_distribution', {})
+                    },
+                    "company_category_distribution": {
+                        "won": patterns['positive_patterns'].get('company_category_distribution', {}),
+                        "lost": patterns['negative_patterns'].get('company_category_distribution', {})
+                    },
+                    "employee_range_distribution": {
+                        "won": patterns['positive_patterns'].get('size_distribution', {}),
+                        "lost": patterns['negative_patterns'].get('size_distribution', {})
+                    }
                 }
-                
-                employee_range = company.get("employee_range", "")
-                headcount_label = headcount_codes.get(employee_range, employee_range)
-                
-                # Company category labels
-                company_category = company.get("company_category", "")
-                company_size_label = "PME" if company_category == "PME" else "ETI" if company_category == "ETI" else "GE" if company_category == "GE" else company_category
-                
-                scored_companies.append({
-                    # Core identification
-                    "name": company.get("company_name", "N/A"),
-                    "siren": siren,
-                    "siret": company.get("siret", "N/A"),
-                    "ape": ape,
-                    "region": region,
-                    "location": location,
-                    
-                    # Legal unit data
-                    "denominationUniteLegale": company.get("company_name", "N/A"),
-                    "denominationUsuelle1UniteLegale": company.get("denominationUsuelle1UniteLegale", ""),
-                    "denominationUsuelle2UniteLegale": company.get("denominationUsuelle2UniteLegale", ""),
-                    "denominationUsuelle3UniteLegale": company.get("denominationUsuelle3UniteLegale", ""),
-                    "sigleUniteLegale": company.get("sigleUniteLegale", ""),
-                    "categorieJuridiqueUniteLegale": company.get("legal_form", "N/A"),
-                    "activitePrincipaleUniteLegale": ape,
-                    "nomenclatureActivitePrincipaleUniteLegale": company.get("nomenclature_activity", ""),
-                    "categorieEntreprise": company_category,
-                    "anneeCategorieEntreprise": company.get("company_category_year", ""),
-                    "trancheEffectifsUniteLegale": employee_range,
-                    "anneeEffectifsUniteLegale": company.get("legal_unit_employees_year", ""),
-                    "economieSocialeSolidaireUniteLegale": company.get("social_economy", ""),
-                    "societeMissionUniteLegale": company.get("mission_company", ""),
-                    "etatAdministratifUniteLegale": "A" if company.get("is_active", False) else "C",
-                    "dateCreationUniteLegale": company.get("legal_unit_creation_date", ""),
-                    "dateDernierTraitementUniteLegale": company.get("last_processing_date", ""),
-                    "nicSiegeUniteLegale": nic_siege,
-                    "statutDiffusionUniteLegale": company.get("legal_unit_diffusion_status", ""),
-                    "unitePurgeeUniteLegale": company.get("unitePurgeeUniteLegale", ""),
-                    
-                    # Derived fields
-                    "seatSiret": seat_siret,
-                    "isActive": company.get("is_active", False),
-                    "isESS": company.get("social_economy") == "O",
-                    "isMissionCompany": company.get("mission_company") == "O",
-                    "isDiffusionPartialUL": company.get("legal_unit_diffusion_status") == "P",
-                    "companySizeLabel": company_size_label,
-                    "headcountLabelUL": headcount_label,
-                    
-                    # Scoring
-                    "win_score": score,
-                    "band": "High" if score > 0.8 else "Medium" if score > 0.6 else "Low",
-                    "confidence_badge": f"{score:.1%}",
-                    "reasons": reasons if reasons else [f"Matches winning patterns (score: {score:.1%})"],
-                    "source": "SIRENE"
-                })
-            
-            # Sort by score (highest first)
-            scored_companies.sort(key=lambda x: x["win_score"], reverse=True)
-            
-            print(f"[DEBUG] Returned {len(scored_companies)} companies (pre-filtered by SIRENE)")
-            
-            return {
-                "ok": True,
-                "stats": {
-                    "rows": len(df),
-                    "wins": patterns['total_won'],
-                    "losses": patterns['total_lost'],
-                    "total_deals": len(df),
-                    "won_deals": patterns['total_won'],
-                    "lost_deals": patterns['total_lost'],
-                    "positive_patterns": {
-                        "ape_codes": len(patterns['positive_patterns'].get('ape_distribution', {})),
-                        "regions": len(patterns['positive_patterns'].get('region_distribution', {})),
-                        "sizes": len(patterns['positive_patterns'].get('size_distribution', {})),
-                        "legal_forms": len(patterns['positive_patterns'].get('legal_form_distribution', {})),
-                        "age_ranges": len(patterns['positive_patterns'].get('age_distribution', {}))
-                    },
-                    "negative_patterns": {
-                        "ape_codes": len(patterns['negative_patterns'].get('ape_distribution', {})),
-                        "regions": len(patterns['negative_patterns'].get('region_distribution', {})),
-                        "sizes": len(patterns['negative_patterns'].get('size_distribution', {})),
-                        "legal_forms": len(patterns['negative_patterns'].get('legal_form_distribution', {})),
-                        "age_ranges": len(patterns['negative_patterns'].get('age_distribution', {}))
-                    }
-                },
-                "model_version": f"{req.tenant_id}-v1-simple",
-                "discovered_leads": scored_companies,
-                "message": f"Model trained successfully! Found {len(scored_companies)} matching companies from SIRENE."
-            }
-            
-        except Exception as e:
-            print(f"[ERROR] Auto-discovery failed: {e}")
-            return {
-                "ok": True,
-                "stats": {
-                    "rows": len(df),
-                    "wins": patterns['total_won'],
-                    "losses": patterns['total_lost'],
-                    "total_deals": len(df),
-                    "won_deals": patterns['total_won'],
-                    "lost_deals": patterns['total_lost'],
-                    "positive_patterns": {
-                        "ape_codes": len(patterns['positive_patterns'].get('ape_distribution', {})),
-                        "regions": len(patterns['positive_patterns'].get('region_distribution', {})),
-                        "sizes": len(patterns['positive_patterns'].get('size_distribution', {})),
-                        "legal_forms": len(patterns['positive_patterns'].get('legal_form_distribution', {})),
-                        "age_ranges": len(patterns['positive_patterns'].get('age_distribution', {}))
-                    },
-                    "negative_patterns": {
-                        "ape_codes": len(patterns['negative_patterns'].get('ape_distribution', {})),
-                        "regions": len(patterns['negative_patterns'].get('region_distribution', {})),
-                        "sizes": len(patterns['negative_patterns'].get('size_distribution', {})),
-                        "legal_forms": len(patterns['negative_patterns'].get('legal_form_distribution', {})),
-                        "age_ranges": len(patterns['negative_patterns'].get('age_distribution', {}))
-                    }
-                },
-                "model_version": f"{req.tenant_id}-v1-simple",
-                "discovered_leads": [],
-                "message": f"Model trained successfully, but auto-discovery failed: {str(e)}"
-            }
+            },
+            "hypotheses": hypotheses,
+            "discovery_criteria": discovery_criteria,
+            "model_version": f"{req.tenant_id}-v2-enhanced",
+            "message": f"Model trained successfully! Enriched {enriched_count}/{len(df)} companies with Sirene data."
+        }
         
     except Exception as e:
         print(f"[ERROR] Training error: {e}")
@@ -813,7 +1063,7 @@ async def train(req: TrainRequest):
 
 @app.post("/discover")
 async def discover(req: DiscoverRequest):
-    """Discover companies using learned patterns"""
+    """Discover companies using learned patterns with enhanced scoring"""
     try:
         print(f"[DEBUG] Discovery request for tenant: {req.tenant_id}")
         
@@ -833,57 +1083,29 @@ async def discover(req: DiscoverRequest):
         for company in companies:
             score = score_company(company, patterns)
             
-            # Extract SIRENE data properly
-            siren = company.get("siren", "N/A")
-            ape = company.get("ape", "N/A")
-            region = company.get("region", "N/A")
-            
-            # Build location from city and postal_code
-            city = company.get("city", "")
-            postal_code = company.get("postal_code", "")
-            if postal_code:
-                location = f"{city}, {postal_code}" if city else postal_code
-            elif city:
-                location = city
-            else:
-                location = "N/A"
-            
-            # Employee range mapping
-            headcount_codes = {
-                "00": "0",
-                "01": "1-2",
-                "02": "3-5", 
-                "03": "6-9",
-                "11": "10-19",
-                "12": "20-49",
-                "21": "50-99",
-                "22": "100-199",
-                "31": "200-249",
-                "32": "250-499",
-                "41": "500-999",
-                "42": "1 000-1 999",
-                "51": "2 000-4 999",
-                "52": "5 000-9 999",
-                "53": "10 000+"
-            }
-            
-            employee_range = company.get("employee_range", "")
-            headcount_label = headcount_codes.get(employee_range, employee_range)
-            
-            # Company category labels
-            company_category = company.get("company_category", "")
-            company_size_label = "PME" if company_category == "PME" else "ETI" if company_category == "ETI" else "GE" if company_category == "GE" else company_category
-            
             # Build reasons for scoring
             reasons = []
+            ape = company.get("ape", "")
+            region = company.get("region", "")
+            company_category = company.get("company_category", "")
+            age_category = company.get("age_category", "")
+            
+            # Build detailed reasons based on pattern matches
             if ape in patterns['positive_patterns'].get('ape_distribution', {}):
-                reasons.append(f"Winning APE: {ape}")
+                ape_freq = patterns['positive_patterns']['ape_distribution'][ape]
+                reasons.append(f"Winning APE {ape} ({ape_freq:.1%} of wins)")
+            
             if region in patterns['positive_patterns'].get('region_distribution', {}):
-                reasons.append(f"Winning region: {region}")
-            if employee_range in patterns['positive_patterns'].get('size_distribution', {}):
-                reasons.append(f"Winning size: {headcount_label}")
-            if company.get("legal_form") in patterns['positive_patterns'].get('legal_form_distribution', {}):
-                reasons.append(f"Winning legal form: {company.get('legal_form')}")
+                region_freq = patterns['positive_patterns']['region_distribution'][region]
+                reasons.append(f"Winning region {region} ({region_freq:.1%} of wins)")
+            
+            if company_category in patterns['positive_patterns'].get('company_category_distribution', {}):
+                cat_freq = patterns['positive_patterns']['company_category_distribution'][company_category]
+                reasons.append(f"Winning company category {company_category} ({cat_freq:.1%} of wins)")
+            
+            if age_category in patterns['positive_patterns'].get('age_distribution', {}):
+                age_freq = patterns['positive_patterns']['age_distribution'][age_category]
+                reasons.append(f"Winning age category {age_category} ({age_freq:.1%} of wins)")
             
             # Determine band
             if score >= 0.7:
@@ -896,44 +1118,35 @@ async def discover(req: DiscoverRequest):
             scored_companies.append({
                 # Core identification
                 "name": company.get("company_name", "N/A"),
-                "siren": siren,
+                "siren": company.get("siren", "N/A"),
                 "siret": company.get("siret", "N/A"),
                 "ape": ape,
+                "ape_description": company.get("ape_description", ""),
+                "legal_form": company.get("legal_form", ""),
+                "legal_form_description": company.get("legal_form_description", ""),
                 "region": region,
-                "location": location,
+                "location": company.get("location", "N/A"),
                 
-                # Legal unit data
-                "denominationUniteLegale": company.get("company_name", "N/A"),
-                "denominationUsuelle1UniteLegale": company.get("denominationUsuelle1UniteLegale", "N/A"),
-                "sigleUniteLegale": company.get("sigleUniteLegale", "N/A"),
-                "categorieJuridiqueUniteLegale": company.get("legal_form", "N/A"),
-                "activitePrincipaleUniteLegale": ape,
-                "categorieEntreprise": company_category,
-                "trancheEffectifsUniteLegale": headcount_label,
-                "anneeEffectifsUniteLegale": company.get("legal_unit_employees_year", "N/A"),
-                "companySizeLabel": company_size_label,
-                "etatAdministratifUniteLegale": company.get("is_active", False) and "A" or "I",
-                "caractereEmployeurUniteLegale": company.get("is_employer", "N/A"),
-                "etablissementSiege": company.get("is_headquarters", False),
-                "dateCreationUniteLegale": company.get("legal_unit_creation_date", "N/A"),
-                "dateDernierTraitementUniteLegale": company.get("last_processing_date", "N/A"),
-                "economieSocialeSolidaireUniteLegale": company.get("social_economy", "N/A"),
-                "societeMissionUniteLegale": company.get("mission_company", "N/A"),
-                "identifiantAssociationUniteLegale": company.get("association_id", "N/A"),
+                # Company characteristics
+                "employee_range": company.get("employee_range", ""),
+                "employee_description": company.get("employee_description", ""),
+                "age_years": company.get("age_years"),
+                "age_category": age_category,
+                "creation_date": company.get("creation_date", ""),
+                "is_active": company.get("is_active", False),
+                "is_ess": company.get("is_ess", False),
+                "is_mission_company": company.get("is_mission_company", False),
                 
-                # Address data
-                "postal_code": company.get("postal_code", "N/A"),
-                "city": company.get("city", "N/A"),
-                "libelleVoieEtablissement": company.get("street_name", "N/A"),
-                "numeroVoieEtablissement": company.get("street_number", "N/A"),
-                "coordonneeLambertAbscisseEtablissement": company.get("x_coordinate", "N/A"),
-                "coordonneeLambertOrdonneeEtablissement": company.get("y_coordinate", "N/A"),
+                # Company category and size
+                "company_category": company_category,
+                "company_category_year": company.get("company_category_year", ""),
                 
                 # Scoring
                 "win_score": score,
                 "band": band,
-                "reasons": reasons,
-                "isActive": company.get("is_active", False)
+                "confidence_badge": f"{score:.1%}",
+                "reasons": reasons if reasons else [f"Matches winning patterns (score: {score:.1%})"],
+                "source": "SIRENE"
             })
         
         # Sort by score (highest first)
@@ -944,12 +1157,10 @@ async def discover(req: DiscoverRequest):
             "companies": scored_companies[:req.limit],
             "total_found": len(scored_companies),
             "patterns_used": {
-                "positive_ape_codes": list(patterns['positive_patterns'].get('ape_distribution', {}).keys())[:10],
-                "positive_regions": list(patterns['positive_patterns'].get('region_distribution', {}).keys())[:10],
-                "negative_ape_codes": list(patterns['negative_patterns'].get('ape_distribution', {}).keys())[:10],
-                "negative_regions": list(patterns['negative_patterns'].get('region_distribution', {}).keys())[:10],
-                "total_positive_patterns": sum(len(p) for p in patterns['positive_patterns'].values() if isinstance(p, dict)),
-                "total_negative_patterns": sum(len(p) for p in patterns['negative_patterns'].values() if isinstance(p, dict))
+                "company_categories": list(patterns['positive_patterns'].get('company_category_distribution', {}).keys())[:10],
+                "age_categories": list(patterns['positive_patterns'].get('age_distribution', {}).keys())[:10],
+                "ape_codes": list(patterns['positive_patterns'].get('ape_distribution', {}).keys())[:10],
+                "regions": list(patterns['positive_patterns'].get('region_distribution', {}).keys())[:10]
             }
         }
         
