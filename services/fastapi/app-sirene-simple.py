@@ -1173,14 +1173,20 @@ async def discover(req: DiscoverRequest):
                 band = "Low"
             
             scored_companies.append({
-                # Core identification
-                "name": company.get("company_name", "N/A"),
+                # Core identification (same as enriched data)
+                "company_name": company.get("company_name", "N/A"),
                 "siren": company.get("siren", "N/A"),
                 "siret": company.get("siret", "N/A"),
+                
+                # Activity and legal information
                 "ape": ape,
                 "ape_description": company.get("ape_description", ""),
                 "legal_form": company.get("legal_form", ""),
                 "legal_form_description": company.get("legal_form_description", ""),
+                
+                # Location information
+                "postal_code": company.get("postal_code", ""),
+                "city": company.get("city", ""),
                 "region": region,
                 "location": company.get("location", "N/A"),
                 
@@ -1197,6 +1203,11 @@ async def discover(req: DiscoverRequest):
                 # Company category and size
                 "company_category": company_category,
                 "company_category_year": company.get("company_category_year", ""),
+                
+                # Additional fields
+                "is_headquarters": company.get("is_headquarters", False),
+                "association_id": company.get("association_id", ""),
+                "last_processing_date": company.get("last_processing_date", ""),
                 
                 # Scoring
                 "win_score": score,
