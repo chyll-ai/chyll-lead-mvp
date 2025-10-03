@@ -438,7 +438,7 @@ def generate_hypotheses(patterns: Dict[str, Any]) -> Dict[str, Any]:
         if ape_code and freq > 0.3:  # 30% threshold for strong pattern
             neg_freq = ape_neg.get(ape_code, 0)
             if neg_freq < freq * 0.5:  # Much more common in won deals
-                confidence = "high" if freq > 0.5 else "medium"
+                confidence = "strong" if freq > 0.5 else "moderate"
                 hypotheses[f"{confidence}_patterns"].append({
                     'pattern': f"Companies with APE code {ape_code} ({get_ape_description(ape_code)}) tend to win more deals",
                     'confidence': confidence,
@@ -454,7 +454,7 @@ def generate_hypotheses(patterns: Dict[str, Any]) -> Dict[str, Any]:
         if category and freq > 0.3:
             neg_freq = cat_neg.get(category, 0)
             if neg_freq < freq * 0.5:
-                confidence = "high" if freq > 0.5 else "medium"
+                confidence = "strong" if freq > 0.5 else "moderate"
                 hypotheses[f"{confidence}_patterns"].append({
                     'pattern': f"{category} companies tend to win more deals",
                     'confidence': confidence,
@@ -472,7 +472,7 @@ def generate_hypotheses(patterns: Dict[str, Any]) -> Dict[str, Any]:
             lost_pct = data.get('lost_percentage', 0)
             significance = data.get('significance', 0)
             
-            confidence = "high" if significance > 0.4 else "medium"
+            confidence = "strong" if significance > 0.4 else "moderate"
             hypotheses[f"{confidence}_patterns"].append({
                 'pattern': f"{age_cat.title()} companies show different win rates",
                 'confidence': confidence,
@@ -488,7 +488,7 @@ def generate_hypotheses(patterns: Dict[str, Any]) -> Dict[str, Any]:
         if region and freq > 0.2:  # Lower threshold for regions
             neg_freq = region_neg.get(region, 0)
             if neg_freq < freq * 0.7:
-                confidence = "medium" if freq > 0.4 else "weak"
+                confidence = "moderate" if freq > 0.4 else "weak"
                 hypotheses[f"{confidence}_patterns"].append({
                     'pattern': f"Companies in region {region} show positive trend",
                     'confidence': confidence,
