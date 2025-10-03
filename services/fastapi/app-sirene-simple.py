@@ -627,8 +627,52 @@ def score_company(company: Dict[str, Any], patterns: Dict[str, Any]) -> float:
     
     return final_score
 
+def build_sirene_filters_from_criteria(discovery_criteria: Dict[str, Any]) -> Dict[str, Any]:
+    """Build SIRENE filters from discovery criteria"""
+    filters = {}
+    
+    # Primary filters (must match)
+    primary_filters = discovery_criteria.get('primary_filters', {})
+    
+    # Company category filter
+    if 'company_category' in primary_filters:
+        # For SIRENE, we need to map company categories to APE codes or use other filters
+        # Since SIRENE doesn't have direct company category filtering, we'll use this in scoring
+        filters['company_category_filter'] = primary_filters['company_category']
+    
+    # Age category filter - SIRENE doesn't have direct age filtering, we'll use this in scoring
+    if 'age_category' in primary_filters:
+        filters['age_category_filter'] = primary_filters['age_category']
+    
+    # Administrative status (always active companies)
+    if 'etat_administratif' in primary_filters:
+        filters['etatAdministratifUniteLegale'] = primary_filters['etat_administratif']
+    
+    # Secondary filters (should match)
+    secondary_filters = discovery_criteria.get('secondary_filters', {})
+    
+    # APE codes filter
+    if 'ape_codes' in secondary_filters:
+        ape_codes = secondary_filters['ape_codes']
+        if isinstance(ape_codes, list) and len(ape_codes) > 0:
+            if len(ape_codes) == 1:
+                filters['ape'] = ape_codes[0]
+            else:
+                filters['ape'] = ape_codes
+    
+    # Regions filter
+    if 'regions' in secondary_filters:
+        regions = secondary_filters['regions']
+        if isinstance(regions, list) and len(regions) > 0:
+            if len(regions) == 1:
+                filters['postal_code'] = regions[0]
+            else:
+                filters['postal_code'] = regions
+    
+    print(f"[DEBUG] Built SIRENE filters from criteria: {filters}")
+    return filters
+
 def build_sirene_filters(patterns: Dict[str, Any], min_frequency: float = 0.01) -> Dict[str, Any]:
-    """Build SIRENE filters using only the strongest positive patterns (high win probability)"""
     filters = {
         'etatAdministratifUniteLegale': 'A'  # Active companies only
     }
@@ -1081,8 +1125,12 @@ async def discover(req: DiscoverRequest):
         if not patterns:
             return {"ok": False, "error": "No patterns learned. Please train first."}
         
-        # Build SIRENE filters based on patterns
-        sirene_filters = build_sirene_filters(patterns, min_frequency=0.01)
+        # Build discovery criteria from patterns
+        discovery_criteria = build_discovery_criteria(patterns)
+        print(f"[DEBUG] Using discovery criteria: {discovery_criteria}")
+        
+        # Build SIRENE filters based on discovery criteria
+        sirene_filters = build_sirene_filters_from_criteria(discovery_criteria)
         
         # Fetch companies from SIRENE
         companies = await fetch_sirene_companies(sirene_filters, limit=req.limit)
@@ -1165,6 +1213,7 @@ async def discover(req: DiscoverRequest):
             "ok": True,
             "companies": scored_companies[:req.limit],
             "total_found": len(scored_companies),
+            "discovery_criteria_used": discovery_criteria,
             "patterns_used": {
                 "company_categories": list(patterns['positive_patterns'].get('company_category_distribution', {}).keys())[:10],
                 "age_categories": list(patterns['positive_patterns'].get('age_distribution', {}).keys())[:10],
