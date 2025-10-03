@@ -132,6 +132,10 @@ def calculate_age_and_category(creation_date: str) -> tuple[int, str]:
         current_year = datetime.now().year
         age = current_year - creation_year
         
+        # Ensure age is valid
+        if age < 0 or age > 200:  # Reasonable bounds
+            return None, "unknown"
+        
         if age < 2:
             category = "startup"
         elif age < 5:
@@ -156,6 +160,21 @@ def get_ape_description(code: str) -> str:
 def get_employee_description(code: str) -> str:
     """Get human-readable employee range description"""
     return EMPLOYEE_RANGE_MAPPING.get(code, f"Effectif {code}")
+
+def clean_for_json(data):
+    """Clean data to ensure JSON compliance"""
+    import math
+    
+    if isinstance(data, dict):
+        return {k: clean_for_json(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [clean_for_json(item) for item in data]
+    elif isinstance(data, float):
+        if math.isnan(data) or math.isinf(data):
+            return None
+        return data
+    else:
+        return data
 
 def clean_company_name(name: str) -> str:
     """Clean company name for Sirene search"""
@@ -653,7 +672,7 @@ def health():
     }
 
 async def search_sirene_by_name_and_location(company_name: str, postal_code: str, city: str) -> dict:
-    """Search Sirene by company name and location"""
+    """Search Sirene by company name only (no postal code)"""
     if not SIRENE_TOKEN or not company_name:
         return {}
     
@@ -663,18 +682,8 @@ async def search_sirene_by_name_and_location(company_name: str, postal_code: str
         if not clean_name:
             return {}
         
-        # Build search query
-        query_parts = [f'denominationUniteLegale:"{clean_name}"']
-        
-        # Add location filters if available
-        if postal_code:
-            query_parts.append(f'codePostalEtablissement:{postal_code}')
-        elif city:
-            # Try to match city name
-            clean_city = city.upper().strip()
-            query_parts.append(f'libelleCommuneEtablissement:"{clean_city}"')
-        
-        query = " AND ".join(query_parts)
+        # Build search query using only company name
+        query = f'denominationUniteLegale:"{clean_name}"'
         
         params = {
             "q": query,
@@ -682,7 +691,7 @@ async def search_sirene_by_name_and_location(company_name: str, postal_code: str
             "debut": 1
         }
         
-        print(f"[DEBUG] Searching Sirene for: {company_name} in {city}, {postal_code}")
+        print(f"[DEBUG] Searching Sirene for: {company_name}")
         print(f"[DEBUG] Query: {query}")
         
         async with httpx.AsyncClient() as client:
@@ -1022,8 +1031,8 @@ async def train(req: TrainRequest):
         
         return {
             "ok": True,
-            "enriched_data": enriched_data,
-            "analysis": {
+            "enriched_data": clean_for_json(enriched_data),
+            "analysis": clean_for_json({
                 "total_companies": len(df),
                 "won_companies": patterns['total_won'],
                 "lost_companies": patterns['total_lost'],
@@ -1050,9 +1059,9 @@ async def train(req: TrainRequest):
                         "lost": patterns['negative_patterns'].get('size_distribution', {})
                     }
                 }
-            },
-            "hypotheses": hypotheses,
-            "discovery_criteria": discovery_criteria,
+            }),
+            "hypotheses": clean_for_json(hypotheses),
+            "discovery_criteria": clean_for_json(discovery_criteria),
             "model_version": f"{req.tenant_id}-v2-enhanced",
             "message": f"Model trained successfully! Enriched {enriched_count}/{len(df)} companies with Sirene data."
         }
