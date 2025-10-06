@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:prod": "NODE_ENV=production tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build:prod && vercel --prod --yes",
+    "deploy:preview": "npm run build && vercel --yes"
   },
   "dependencies": {
     "react": "^19.1.1",
