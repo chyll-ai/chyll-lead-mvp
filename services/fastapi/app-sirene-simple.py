@@ -407,11 +407,18 @@ async def fetch_sirene_companies(filters: Dict[str, Any], limit: int = 100) -> L
                     'legal_form': legal_form_code,
                     'legal_form_description': get_legal_form_description(legal_form_code),
                     
-                    # Location information
+                    # Location information - Enhanced with full address
                     'postal_code': adresse.get('codePostalEtablissement', ''),
                     'city': adresse.get('libelleCommuneEtablissement', ''),
                     'region': adresse.get('codePostalEtablissement', '')[:2] if adresse.get('codePostalEtablissement') else '',
                     'location': f"{adresse.get('libelleCommuneEtablissement', '')}, {adresse.get('codePostalEtablissement', '')}".strip(', '),
+                    'full_address': construct_full_address(adresse),
+                    
+                    # Individual address components for flexibility
+                    'street_number': adresse.get('numeroVoieEtablissement', ''),
+                    'street_type': adresse.get('typeVoieEtablissement', ''),
+                    'street_name': adresse.get('libelleVoieEtablissement', ''),
+                    'address_complement': adresse.get('complementAdresseEtablissement', ''),
                     
                     # Company characteristics
                     'employee_range': employee_range,
@@ -758,6 +765,43 @@ async def search_sirene_by_name_and_location(company_name: str, postal_code: str
     
     return {}
 
+def construct_full_address(adresse: dict) -> str:
+    """Smart address construction from SIRENE address fields"""
+    parts = []
+    
+    # Street address components - handle None values
+    street_number = (adresse.get('numeroVoieEtablissement') or '').strip()
+    street_type = (adresse.get('typeVoieEtablissement') or '').strip()
+    street_name = (adresse.get('libelleVoieEtablissement') or '').strip()
+    
+    # Build street address if we have the components
+    if street_number and street_type and street_name:
+        street_address = f"{street_number} {street_type} {street_name}"
+        parts.append(street_address)
+    elif street_type and street_name:  # No street number
+        street_address = f"{street_type} {street_name}"
+        parts.append(street_address)
+    elif street_name:  # Only street name
+        parts.append(street_name)
+    
+    # Additional address information (building, floor, etc.)
+    complement = (adresse.get('complementAdresseEtablissement') or '').strip()
+    if complement:
+        parts.append(complement)
+    
+    # Postal code and city
+    postal_code = (adresse.get('codePostalEtablissement') or '').strip()
+    city = (adresse.get('libelleCommuneEtablissement') or '').strip()
+    
+    if postal_code and city:
+        parts.append(f"{postal_code} {city}")
+    elif city:  # Only city
+        parts.append(city)
+    elif postal_code:  # Only postal code
+        parts.append(postal_code)
+    
+    return ', '.join(parts)
+
 def extract_enriched_sirene_data(etablissement: dict) -> dict:
     """Extract enriched Sirene data from etablissement response"""
     unite_legale = etablissement.get('uniteLegale', {})
@@ -784,11 +828,18 @@ def extract_enriched_sirene_data(etablissement: dict) -> dict:
         'legal_form': legal_form_code,
         'legal_form_description': get_legal_form_description(legal_form_code),
         
-        # Location information
+        # Location information - Enhanced with full address
         'postal_code': adresse.get('codePostalEtablissement', ''),
         'city': adresse.get('libelleCommuneEtablissement', ''),
         'region': adresse.get('codePostalEtablissement', '')[:2] if adresse.get('codePostalEtablissement') else '',
         'location': f"{adresse.get('libelleCommuneEtablissement', '')}, {adresse.get('codePostalEtablissement', '')}".strip(', '),
+        'full_address': construct_full_address(adresse),
+        
+        # Individual address components for flexibility
+        'street_number': adresse.get('numeroVoieEtablissement', ''),
+        'street_type': adresse.get('typeVoieEtablissement', ''),
+        'street_name': adresse.get('libelleVoieEtablissement', ''),
+        'address_complement': adresse.get('complementAdresseEtablissement', ''),
         
         # Company characteristics
         'employee_range': employee_range,
@@ -1189,6 +1240,13 @@ async def discover(req: DiscoverRequest):
                 "city": company.get("city", ""),
                 "region": region,
                 "location": company.get("location", "N/A"),
+                "full_address": company.get("full_address", ""),
+                
+                # Individual address components for flexibility
+                "street_number": company.get("street_number", ""),
+                "street_type": company.get("street_type", ""),
+                "street_name": company.get("street_name", ""),
+                "address_complement": company.get("address_complement", ""),
                 
                 # Company characteristics
                 "employee_range": company.get("employee_range", ""),

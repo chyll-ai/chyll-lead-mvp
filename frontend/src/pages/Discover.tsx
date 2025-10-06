@@ -6,9 +6,28 @@ type Company = {
   company_id: string;
   name: string;
   siren: string;
+  siret: string;
   ape: string;
+  ape_description: string;
+  legal_form: string;
+  legal_form_description: string;
+  postal_code: string;
+  city: string;
   region: string;
   department: string;
+  full_address: string;
+  street_number: string;
+  street_type: string;
+  street_name: string;
+  address_complement: string;
+  employee_range: string;
+  employee_description: string;
+  age_years: number;
+  age_category: string;
+  company_category: string;
+  is_active: boolean;
+  is_ess: boolean;
+  is_mission_company: boolean;
   win_score: number;
   band: string;
   confidence_badge: string;
@@ -51,7 +70,7 @@ const Discover: React.FC = () => {
 
   const download = () => {
     if (!companies.length) return;
-    const cols = ["name", "siren", "ape", "region", "department", "win_score", "band", "confidence_badge", "source"];
+    const cols = ["name", "siren", "siret", "ape", "ape_description", "legal_form", "legal_form_description", "postal_code", "city", "region", "full_address", "employee_range", "age_years", "age_category", "company_category", "is_active", "is_ess", "is_mission_company", "win_score", "band", "confidence_badge", "source"];
     const csv = toCSV(companies, cols);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -124,8 +143,7 @@ const Discover: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SIREN</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">APE</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Region</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Address</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Band</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Why</th>
@@ -139,8 +157,11 @@ const Discover: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{company.name}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.siren}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.ape}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.region}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{company.department}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs">
+                        <div className="truncate" title={company.full_address || `${company.city}, ${company.postal_code}`}>
+                          {company.full_address || `${company.city}, ${company.postal_code}`}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">{company.win_score.toFixed(3)}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
