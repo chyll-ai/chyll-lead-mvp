@@ -17,5 +17,13 @@ export default defineConfig({
   define: {
     // Add build timestamp for cache busting
     __BUILD_TIME__: JSON.stringify(new Date().toISOString())
+  },
+  server: {
+    headers: {
+      // Prevent caching during development
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
   }
 })

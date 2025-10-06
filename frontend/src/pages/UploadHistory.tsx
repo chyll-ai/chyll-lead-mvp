@@ -268,9 +268,7 @@ const UploadHistory: React.FC = () => {
                         <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Legal Form</th>
                         
                         {/* Location */}
-                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Postal Code</th>
-                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">City</th>
-                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Region</th>
+                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Full Address</th>
                         
                         {/* Company Characteristics */}
                         <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Employee Range</th>
@@ -315,13 +313,11 @@ const UploadHistory: React.FC = () => {
                           </td>
                           
                           {/* Location */}
-                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300 font-mono">{lead.postal_code || 'N/A'}</td>
                           <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
-                            <div className="max-w-20 truncate" title={lead.city || 'N/A'}>
-                              {lead.city || 'N/A'}
+                            <div className="max-w-40 truncate" title={lead.full_address || `${lead.postal_code || ''} ${lead.city || ''}`.trim() || 'N/A'}>
+                              {lead.full_address || `${lead.postal_code || ''} ${lead.city || ''}`.trim() || 'N/A'}
                             </div>
                           </td>
-                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">{lead.region || 'N/A'}</td>
                           
                           {/* Company Characteristics */}
                           <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-300">
