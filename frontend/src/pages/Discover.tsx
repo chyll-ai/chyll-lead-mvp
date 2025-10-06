@@ -88,7 +88,7 @@ const Discover: React.FC = () => {
               Discover & Score Companies
             </h2>
             <p className="mt-2 text-sm text-gray-600">
-              Build and score companies using ML predictions
+              Build and score companies using ML predictions with Full Address
             </p>
           </div>
           <div className="text-sm text-gray-500">
