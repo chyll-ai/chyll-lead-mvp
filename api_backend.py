@@ -30,11 +30,11 @@ app.add_middleware(
 import os
 
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'ballast.proxy.rlwy.net'),
-    'port': os.getenv('DB_PORT', '30865'),
-    'database': os.getenv('DB_NAME', 'railway'),
-    'user': os.getenv('DB_USER', 'postgres'),
-    'password': os.getenv('DB_PASSWORD', 'mlnbusCQpeWkMTFpMasYdILtfnHEyfyG')
+    'host': os.getenv('DB_HOST'),
+    'port': os.getenv('DB_PORT'),
+    'database': os.getenv('DB_NAME'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD')
 }
 
 class Company(BaseModel):
@@ -65,6 +65,10 @@ def get_db_connection():
 @app.get("/")
 async def root():
     return {"message": "ESS Mission Companies API", "version": "1.0.0"}
+
+@app.get("/test")
+async def test():
+    return {"status": "ok", "message": "API is working"}
 
 @app.get("/companies", response_model=List[Company])
 async def get_companies(
