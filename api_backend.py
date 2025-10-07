@@ -30,11 +30,11 @@ app.add_middleware(
 import os
 
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST'),
-    'port': os.getenv('DB_PORT'),
-    'database': os.getenv('DB_NAME'),
-    'user': os.getenv('DB_USER'),
-    'password': os.getenv('DB_PASSWORD')
+    'host': os.getenv('PGHOST'),
+    'port': os.getenv('PGPORT'),
+    'database': os.getenv('PGDATABASE'),
+    'user': os.getenv('PGUSER'),
+    'password': os.getenv('PGPASSWORD')
 }
 
 class Company(BaseModel):
@@ -83,15 +83,19 @@ async def get_companies(
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        companies = []
+        # Build the main query using UNION to avoid duplicates
+        query_parts = []
         
-        # Get ESS companies
+        # ESS companies query
         if ess:
             ess_query = """
                 SELECT 
                     siren, siret, denomination_unite_legale, libelle_commune, code_postal,
-                    latitude, longitude, in_qpv, is_zrr, qpv_label, zrr_classification,
-                    activite_principale_unite_legale
+                    latitude, longitude, 
+                    CASE WHEN in_qpv THEN TRUE ELSE FALSE END as in_qpv,
+                    CASE WHEN is_zrr THEN TRUE ELSE FALSE END as is_zrr,
+                    qpv_label, zrr_classification, activite_principale_unite_legale,
+                    'ESS' as source_table
                 FROM ess_companies_filtered_table
                 WHERE latitude IS NOT NULL AND longitude IS NOT NULL
             """
@@ -101,39 +105,18 @@ async def get_companies(
             if zrr:
                 ess_query += " AND is_zrr = TRUE"
                 
-            ess_query += f" LIMIT {limit}"
-            
-            cursor.execute(ess_query)
-            ess_results = cursor.fetchall()
-            
-            for row in ess_results:
-                tags = ['ESS']
-                if row[7]:  # in_qpv
-                    tags.append('QPV')
-                if row[8]:  # is_zrr
-                    tags.append('ZRR')
-                
-                companies.append(Company(
-                    siren=row[0],
-                    siret=row[1],
-                    denomination_unite_legale=row[2],
-                    libelle_commune=row[3],
-                    code_postal=row[4],
-                    latitude=float(row[5]),
-                    longitude=float(row[6]),
-                    tags=tags,
-                    qpv_label=row[9],
-                    zrr_classification=row[10],
-                    activite_principale_unite_legale=row[11]
-                ))
+            query_parts.append(ess_query)
         
-        # Get Mission companies
+        # Mission companies query
         if mission:
             mission_query = """
                 SELECT 
                     siren, siret, denomination_unite_legale, libelle_commune, code_postal,
-                    latitude, longitude, societe_mission_unite_legale, economie_sociale_solidaire_unite_legale,
-                    in_qpv, is_zrr, qpv_label, zrr_classification, activite_principale_unite_legale
+                    latitude, longitude,
+                    CASE WHEN in_qpv THEN TRUE ELSE FALSE END as in_qpv,
+                    CASE WHEN is_zrr THEN TRUE ELSE FALSE END as is_zrr,
+                    qpv_label, zrr_classification, activite_principale_unite_legale,
+                    'Mission' as source_table
                 FROM companies_societe_mission
                 WHERE latitude IS NOT NULL AND longitude IS NOT NULL
             """
@@ -143,35 +126,56 @@ async def get_companies(
             if zrr:
                 mission_query += " AND is_zrr = TRUE"
                 
-            mission_query += f" LIMIT {limit}"
+            query_parts.append(mission_query)
+        
+        if not query_parts:
+            return []
+        
+        # Combine queries with UNION and deduplicate by siret
+        main_query = f"""
+            SELECT DISTINCT ON (siret)
+                siren, siret, denomination_unite_legale, libelle_commune, code_postal,
+                latitude, longitude, in_qpv, is_zrr, qpv_label, zrr_classification, 
+                activite_principale_unite_legale, source_table
+            FROM (
+                {' UNION ALL '.join(query_parts)}
+            ) combined
+            ORDER BY siret, source_table
+            LIMIT {limit}
+        """
+        
+        cursor.execute(main_query)
+        results = cursor.fetchall()
+        
+        companies = []
+        for row in results:
+            tags = []
             
-            cursor.execute(mission_query)
-            mission_results = cursor.fetchall()
+            # Determine tags based on source table and flags
+            if row[12] == 'ESS':  # source_table
+                tags.append('ESS')
+            elif row[12] == 'Mission':
+                tags.append('Mission')
             
-            for row in mission_results:
-                tags = []
-                if row[7] == 'T':  # societe_mission_unite_legale
-                    tags.append('Mission')
-                if row[8] == 'T':  # economie_sociale_solidaire_unite_legale
-                    tags.append('ESS')
-                if row[9]:  # in_qpv
-                    tags.append('QPV')
-                if row[10]:  # is_zrr
-                    tags.append('ZRR')
-                
-                companies.append(Company(
-                    siren=row[0],
-                    siret=row[1],
-                    denomination_unite_legale=row[2],
-                    libelle_commune=row[3],
-                    code_postal=row[4],
-                    latitude=float(row[5]),
-                    longitude=float(row[6]),
-                    tags=tags,
-                    qpv_label=row[11],
-                    zrr_classification=row[12],
-                    activite_principale_unite_legale=row[13]
-                ))
+            # Add QPV and ZRR tags if applicable
+            if row[7]:  # in_qpv
+                tags.append('QPV')
+            if row[8]:  # is_zrr
+                tags.append('ZRR')
+            
+            companies.append(Company(
+                siren=row[0],
+                siret=row[1],
+                denomination_unite_legale=row[2],
+                libelle_commune=row[3],
+                code_postal=row[4],
+                latitude=float(row[5]),
+                longitude=float(row[6]),
+                tags=tags,
+                qpv_label=row[9],
+                zrr_classification=row[10],
+                activite_principale_unite_legale=row[11]
+            ))
         
         cursor.close()
         conn.close()

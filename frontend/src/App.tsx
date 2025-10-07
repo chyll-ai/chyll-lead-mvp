@@ -44,7 +44,7 @@ function App() {
     const fetchCompanies = async () => {
       try {
         const apiUrl = import.meta.env.VITE_API_URL || 'https://chyll-lead-mvp-production.up.railway.app';
-        const response = await fetch(`${apiUrl}/companies?limit=2000`);
+        const response = await fetch(`${apiUrl}/companies?limit=50000`);
         if (!response.ok) {
           throw new Error('Failed to fetch companies');
         }
