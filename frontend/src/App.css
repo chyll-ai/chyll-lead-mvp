@@ -11,11 +11,6 @@ body {
   overflow: hidden;
 }
 
-.app {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
 
 /* Loading Screen */
 .loading-screen {

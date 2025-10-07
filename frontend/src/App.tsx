@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
@@ -33,6 +33,10 @@ interface Company {
 function App() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentBatch, setCurrentBatch] = useState(0);
+  const [hasMoreData, setHasMoreData] = useState(true);
+  const [totalLoaded, setTotalLoaded] = useState(0);
+  const batchSize = 500;
   const [filters, setFilters] = useState({
     mission: true,
     ess: true,
@@ -40,25 +44,74 @@ function App() {
     zrr: false
   });
 
-  useEffect(() => {
-    const fetchCompanies = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'https://chyll-lead-mvp-production.up.railway.app';
-        const response = await fetch(`${apiUrl}/companies?limit=50000`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch companies');
-        }
-        const data = await response.json();
-        setCompanies(data);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching companies:', error);
-        setLoading(false);
+  // Map events component to handle automatic loading
+  const MapEvents = () => {
+    useMapEvents({
+      moveend: () => {
+        handleMapMove();
+      },
+      zoomend: () => {
+        handleMapMove();
       }
-    };
+    });
+    return null;
+  };
 
-    fetchCompanies();
+  const loadMoreCompanies = async () => {
+    if (!hasMoreData || loading) return;
+    
+    setLoading(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://chyll-lead-mvp-production.up.railway.app';
+      const response = await fetch(
+        `${apiUrl}/companies/batch?batch_size=${batchSize}&batch_number=${currentBatch}&ess=${filters.ess}&mission=${filters.mission}&qpv=${filters.qpv}&zrr=${filters.zrr}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch companies');
+      }
+      
+      const newCompanies = await response.json();
+      
+      if (newCompanies.length === 0) {
+        setHasMoreData(false);
+      } else {
+        setCompanies(prev => [...prev, ...newCompanies]);
+        setCurrentBatch(prev => prev + 1);
+        setTotalLoaded(prev => prev + newCompanies.length);
+      }
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Reset state when filters change
+    setCompanies([]);
+    setCurrentBatch(0);
+    setHasMoreData(true);
+    setTotalLoaded(0);
+    loadMoreCompanies();
+  }, [filters]);
+
+  // Load initial batch
+  useEffect(() => {
+    if (companies.length === 0 && !loading) {
+      loadMoreCompanies();
+    }
   }, []);
+
+  // Auto-load more companies when user moves map or changes zoom
+  const handleMapMove = () => {
+    if (hasMoreData && !loading && companies.length > 0) {
+      // Load more companies after a short delay to avoid too many requests
+      setTimeout(() => {
+        loadMoreCompanies();
+      }, 1000);
+    }
+  };
 
   const filteredCompanies = companies.filter(company => {
     if (filters.mission && company.tags.includes('Mission')) return true;
@@ -147,6 +200,8 @@ function App() {
         <h1>Impact Map</h1>
         <div className="stats">
           <span className="stat">{filteredCompanies.length} entreprises</span>
+          <span className="stat">Loaded: {totalLoaded.toLocaleString()}</span>
+          {loading && <span className="stat">Loading...</span>}
         </div>
       </div>
 
@@ -185,7 +240,14 @@ function App() {
           zoom={6}
           style={{ height: '100%', width: '100%' }}
           className="map"
+          whenReady={() => {
+            // Load initial batch when map is ready
+            if (companies.length === 0) {
+              loadMoreCompanies();
+            }
+          }}
         >
+          <MapEvents />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

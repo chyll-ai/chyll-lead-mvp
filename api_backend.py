@@ -76,7 +76,8 @@ async def get_companies(
     mission: bool = Query(True, description="Include Mission companies"),
     qpv: bool = Query(False, description="Filter by QPV companies"),
     zrr: bool = Query(False, description="Filter by ZRR companies"),
-    limit: int = Query(1000, description="Maximum number of companies to return")
+    limit: int = Query(1000, description="Maximum number of companies to return"),
+    offset: int = Query(0, description="Number of companies to skip")
 ):
     """Get companies with optional filters"""
     try:
@@ -141,7 +142,7 @@ async def get_companies(
                 {' UNION ALL '.join(query_parts)}
             ) combined
             ORDER BY siret, source_table
-            LIMIT {limit}
+            LIMIT {limit} OFFSET {offset}
         """
         
         cursor.execute(main_query)
@@ -186,6 +187,22 @@ async def get_companies(
     except Exception as e:
         logger.error(f"Error fetching companies: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/companies/batch")
+async def get_companies_batch(
+    batch_size: int = Query(500, description="Number of companies per batch"),
+    batch_number: int = Query(0, description="Batch number (0-based)"),
+    ess: bool = Query(True, description="Include ESS companies"),
+    mission: bool = Query(True, description="Include Mission companies"),
+    qpv: bool = Query(False, description="Filter by QPV companies"),
+    zrr: bool = Query(False, description="Filter by ZRR companies")
+):
+    """Get companies in batches for efficient map loading"""
+    offset = batch_number * batch_size
+    return await get_companies(
+        ess=ess, mission=mission, qpv=qpv, zrr=zrr,
+        limit=batch_size, offset=offset
+    )
 
 @app.get("/stats", response_model=CompanyStats)
 async def get_stats():
