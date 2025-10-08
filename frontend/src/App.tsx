@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
@@ -33,10 +33,6 @@ interface Company {
 function App() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentBatch, setCurrentBatch] = useState(0);
-  const [hasMoreData, setHasMoreData] = useState(true);
-  const [totalLoaded, setTotalLoaded] = useState(0);
-  const batchSize = 500;
   const [filters, setFilters] = useState({
     mission: true,
     ess: true,
@@ -44,82 +40,31 @@ function App() {
     zrr: false
   });
 
-  // Map events component to handle automatic loading
-  const MapEvents = () => {
-    useMapEvents({
-      moveend: () => {
-        handleMapMove();
-      },
-      zoomend: () => {
-        handleMapMove();
-      }
-    });
-    return null;
-  };
-
-  const loadMoreCompanies = async () => {
-    if (!hasMoreData || loading) return;
-    
-    setLoading(true);
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://chyll-lead-mvp-production.up.railway.app';
-      const response = await fetch(
-        `${apiUrl}/companies/batch?batch_size=${batchSize}&batch_number=${currentBatch}&ess=${filters.ess}&mission=${filters.mission}&qpv=${filters.qpv}&zrr=${filters.zrr}`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch companies');
-      }
-      
-      const newCompanies = await response.json();
-      
-      if (newCompanies.length === 0) {
-        setHasMoreData(false);
-      } else {
-        setCompanies(prev => [...prev, ...newCompanies]);
-        setCurrentBatch(prev => prev + 1);
-        setTotalLoaded(prev => prev + newCompanies.length);
-      }
-    } catch (error) {
-      console.error('Error fetching companies:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Load companies when filters change
   useEffect(() => {
-    // Reset state when filters change
-    setCompanies([]);
-    setCurrentBatch(0);
-    setHasMoreData(true);
-    setTotalLoaded(0);
-    loadMoreCompanies();
+    const loadCompanies = async () => {
+      setLoading(true);
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'https://chyll-lead-mvp-production.up.railway.app';
+        const response = await fetch(
+          `${apiUrl}/filter?ess=${filters.ess}&mission=${filters.mission}&qpv=${filters.qpv}&zrr=${filters.zrr}&limit=1000`
+        );
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch companies');
+        }
+        
+        const data = await response.json();
+        setCompanies(data.companies || []);
+      } catch (error) {
+        console.error('Error fetching companies:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCompanies();
   }, [filters]);
-
-  // Load initial batch
-  useEffect(() => {
-    if (companies.length === 0 && !loading) {
-      loadMoreCompanies();
-    }
-  }, []);
-
-  // Auto-load more companies when user moves map or changes zoom
-  const handleMapMove = () => {
-    if (hasMoreData && !loading && companies.length > 0) {
-      // Load more companies after a short delay to avoid too many requests
-      setTimeout(() => {
-        loadMoreCompanies();
-      }, 1000);
-    }
-  };
-
-  const filteredCompanies = companies.filter(company => {
-    if (filters.mission && company.tags.includes('Mission')) return true;
-    if (filters.ess && company.tags.includes('ESS')) return true;
-    if (filters.qpv && company.tags.includes('QPV')) return true;
-    if (filters.zrr && company.tags.includes('ZRR')) return true;
-    return false;
-  });
 
   const createCustomIcon = (company: Company) => {
     let color = '#6B7280';
@@ -197,10 +142,10 @@ function App() {
     <div className="app">
       {/* Header */}
       <div className="header">
-        <h1>Impact Map</h1>
+        <h1>ESS Mission Companies</h1>
+        
         <div className="stats">
-          <span className="stat">{filteredCompanies.length} entreprises</span>
-          <span className="stat">Loaded: {totalLoaded.toLocaleString()}</span>
+          <span className="stat">{companies.length} entreprises</span>
           {loading && <span className="stat">Loading...</span>}
         </div>
       </div>
@@ -241,21 +186,18 @@ function App() {
           style={{ height: '100%', width: '100%' }}
           className="map"
           whenReady={() => {
-            // Load initial batch when map is ready
-            if (companies.length === 0) {
-              loadMoreCompanies();
-            }
+            // Map is ready, companies will load via useEffect
+            console.log('Map is ready');
           }}
         >
-          <MapEvents />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           
-          <MapUpdater companies={filteredCompanies} />
+          <MapUpdater companies={companies} />
           
-          {filteredCompanies.map((company) => (
+          {companies.map((company) => (
             <Marker
               key={company.siren}
               position={[company.latitude, company.longitude]}

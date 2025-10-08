@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESS Mission Companies Map - Smart Search</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+        }
+        
+        .app {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #1f2937;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .search-container {
+            flex: 1;
+            max-width: 600px;
+            margin: 0 2rem;
+            position: relative;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 1rem;
+            background: white;
+            transition: all 0.3s ease;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .search-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        .suggestion {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background-color 0.2s;
+        }
+        
+        .suggestion:hover {
+            background: #f8fafc;
+        }
+        
+        .suggestion:last-child {
+            border-bottom: none;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .stat {
+            background: #3b82f6;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .stat.success { background: #10b981; }
+        .stat.warning { background: #f59e0b; }
+        
+        .map-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        .map {
+            height: 100%;
+            width: 100%;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .popup-content {
+            max-width: 300px;
+        }
+        
+        .popup-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #1f2937;
+        }
+        
+        .popup-info {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
+        }
+        
+        .popup-tags {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .tag {
+            background: #3b82f6;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .tag.ess { background: #10b981; }
+        .tag.mission { background: #f59e0b; }
+        .tag.qpv { background: #8b5cf6; }
+        .tag.zrr { background: #ef4444; }
+        
+        .search-examples {
+            position: absolute;
+            bottom: 1rem;
+            left: 1rem;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            max-width: 300px;
+        }
+        
+        .search-examples h4 {
+            margin-bottom: 0.5rem;
+            color: #1f2937;
+            font-size: 0.875rem;
+        }
+        
+        .example {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-bottom: 0.25rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        
+        .example:hover {
+            background: #f3f4f6;
+        }
+        
+        .mcp-info {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            max-width: 250px;
+        }
+        
+        .mcp-info h4 {
+            margin-bottom: 0.5rem;
+            color: #1f2937;
+            font-size: 0.875rem;
+        }
+        
+        .mcp-info p {
+            font-size: 0.75rem;
+            color: #6b7280;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="header">
+            <h1>🗺️ ESS Mission Companies Map</h1>
+            
+            <div class="search-container">
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    id="searchInput"
+                    placeholder="Rechercher des entreprises... (ex: 'ESS à Paris', 'Mission en zone rurale')"
+                />
+                <div class="search-suggestions" id="suggestions"></div>
+            </div>
+            
+            <div class="stats">
+                <span class="stat" id="company-count">0 entreprises</span>
+                <span class="stat success" id="search-status">Prêt</span>
+            </div>
+        </div>
+        
+        <div class="map-container">
+            <div id="map" class="map"></div>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Chargement de la carte...</p>
+            </div>
+        </div>
+        
+        <div class="search-examples">
+            <h4>💡 Exemples de recherche</h4>
+            <div class="example" onclick="searchExample('ESS à Paris')">ESS à Paris</div>
+            <div class="example" onclick="searchExample('Mission en zone rurale')">Mission en zone rurale</div>
+            <div class="example" onclick="searchExample('coopératives agricoles')">Coopératives agricoles</div>
+            <div class="example" onclick="searchExample('associations santé')">Associations santé</div>
+            <div class="example" onclick="searchExample('QPV entreprises')">QPV entreprises</div>
+            <div class="example" onclick="searchExample('ZRR commerce')">ZRR commerce</div>
+        </div>
+        
+        <div class="mcp-info">
+            <h4>🔍 MCP Search</h4>
+            <p>Recherche intelligente en langage naturel. Le système comprend les types d'entreprises, zones géographiques et secteurs d'activité.</p>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_URL = 'https://chyll-lead-mvp-production.up.railway.app';
+        let map;
+        let companies = [];
+        let currentMarkers = [];
+        
+        // Search suggestions
+        const suggestions = [
+            'ESS à Paris',
+            'Mission en zone rurale',
+            'coopératives agricoles',
+            'associations santé',
+            'QPV entreprises',
+            'ZRR commerce',
+            'économie sociale Lyon',
+            'société mission Marseille',
+            'mutuelles Toulouse',
+            'fondations Bordeaux'
+        ];
+        
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([46.2276, 2.2137], 6);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+            
+            // Hide loading screen
+            document.getElementById('loading').style.display = 'none';
+            
+            // Load demo companies initially
+            loadDemoCompanies();
+        }
+        
+        // Load demo companies with beautiful emoji pins
+        async function loadDemoCompanies() {
+            showLoading('Chargement des entreprises de démonstration...');
+            
+            try {
+                const response = await fetch(`${API_URL}/demo`);
+                const data = await response.json();
+                
+                companies = data.companies;
+                updateMap(companies);
+                updateStats(companies.length, 'Démo chargée');
+                
+            } catch (error) {
+                console.error('Error loading demo companies:', error);
+                updateStats(0, 'Erreur de chargement');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Search companies using natural language
+        async function searchCompanies(query) {
+            if (!query.trim()) return;
+            
+            showLoading(`Recherche: "${query}"...`);
+            updateStats(0, 'Recherche en cours...');
+            
+            try {
+                const response = await fetch(`${API_URL}/search?query=${encodeURIComponent(query)}&limit=200`);
+                const data = await response.json();
+                
+                companies = data.companies;
+                updateMap(companies);
+                updateStats(companies.length, `Trouvé: ${data.total_found}`);
+                
+                // Show search filters applied
+                console.log('Filters applied:', data.filters_applied);
+                
+            } catch (error) {
+                console.error('Error searching companies:', error);
+                updateStats(0, 'Erreur de recherche');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Update map with companies
+        function updateMap(companiesToShow) {
+            // Clear existing markers
+            currentMarkers.forEach(marker => map.removeLayer(marker));
+            currentMarkers = [];
+            
+            // Add markers with beautiful emoji pins
+            companiesToShow.forEach(company => {
+                const icon = createCustomIcon(company);
+                const marker = L.marker([company.latitude, company.longitude], { icon }).addTo(map);
+                
+                const popupContent = `
+                    <div class="popup-content">
+                        <div class="popup-title">${company.denomination_unite_legale || 'Nom non disponible'}</div>
+                        <div class="popup-info">📍 ${company.libelle_commune || 'Commune non disponible'}</div>
+                        <div class="popup-info">🏢 ${company.activite_principale_unite_legale || 'Activité non disponible'}</div>
+                        <div class="popup-tags">
+                            ${company.tags.map(tag => `<span class="tag ${tag.toLowerCase()}">${tag}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+                
+                marker.bindPopup(popupContent);
+                currentMarkers.push(marker);
+            });
+            
+            // Fit map to show all markers
+            if (companiesToShow.length > 0) {
+                const group = new L.featureGroup(currentMarkers);
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+        }
+        
+        // Create custom icon based on company tags
+        function createCustomIcon(company) {
+            let emoji = '🏢'; // Default
+            let color = '#3b82f6';
+            
+            if (company.tags.includes('Mission') && company.tags.includes('ESS')) {
+                emoji = '🌟';
+                color = '#f59e0b';
+            } else if (company.tags.includes('Mission')) {
+                emoji = '🎯';
+                color = '#f59e0b';
+            } else if (company.tags.includes('ESS')) {
+                if (company.tags.includes('QPV')) {
+                    emoji = '🏙️';
+                    color = '#8b5cf6';
+                } else if (company.tags.includes('ZRR')) {
+                    emoji = '🌾';
+                    color = '#ef4444';
+                } else {
+                    emoji = '🤝';
+                    color = '#10b981';
+                }
+            }
+            
+            return L.divIcon({
+                className: 'custom-icon',
+                html: `<div style="
+                    background: ${color};
+                    border: 2px solid white;
+                    border-radius: 50%;
+                    width: 30px;
+                    height: 30px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 16px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                ">${emoji}</div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+        }
+        
+        // Update statistics
+        function updateStats(count, status) {
+            document.getElementById('company-count').textContent = `${count} entreprises`;
+            document.getElementById('search-status').textContent = status;
+        }
+        
+        // Show/hide loading
+        function showLoading(message) {
+            const loading = document.getElementById('loading');
+            loading.querySelector('p').textContent = message;
+            loading.style.display = 'block';
+        }
+        
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        // Search example click handler
+        function searchExample(query) {
+            document.getElementById('searchInput').value = query;
+            searchCompanies(query);
+        }
+        
+        // Search input handlers
+        const searchInput = document.getElementById('searchInput');
+        const suggestionsDiv = document.getElementById('suggestions');
+        
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value;
+            
+            if (query.length > 2) {
+                // Show suggestions
+                const filteredSuggestions = suggestions.filter(s => 
+                    s.toLowerCase().includes(query.toLowerCase())
+                );
+                
+                if (filteredSuggestions.length > 0) {
+                    suggestionsDiv.innerHTML = filteredSuggestions.map(s => 
+                        `<div class="suggestion" onclick="searchExample('${s}')">${s}</div>`
+                    ).join('');
+                    suggestionsDiv.style.display = 'block';
+                } else {
+                    suggestionsDiv.style.display = 'none';
+                }
+            } else {
+                suggestionsDiv.style.display = 'none';
+            }
+        });
+        
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                suggestionsDiv.style.display = 'none';
+                searchCompanies(e.target.value);
+            }
+        });
+        
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) {
+                suggestionsDiv.style.display = 'none';
+            }
+        });
+        
+        // Initialize when page loads
+        window.addEventListener('load', initMap);
+    </script>
+</body>
+</html>

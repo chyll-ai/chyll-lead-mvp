@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-FastAPI Backend for ESS and Mission Companies Map
-Serves data from both ess_companies_filtered_table and companies_societe_mission
+Tabula Virtutis - ESS Companies Map API
+Serves data from ess_companies_filtered_table with comprehensive filtering
 """
 
 from fastapi import FastAPI, HTTPException, Query
@@ -15,7 +15,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ESS Mission Companies API", version="1.0.0")
+app = FastAPI(title="Tabula Virtutis - ESS Companies API", version="2.0.0")
 
 # CORS middleware
 app.add_middleware(
@@ -45,18 +45,25 @@ class Company(BaseModel):
     code_postal: Optional[str] = None
     latitude: float
     longitude: float
-    tags: List[str]  # ['ESS', 'Mission', 'QPV', 'ZRR']
+    tags: List[str]  # ['ESS', 'QPV', 'ZRR']
     qpv_label: Optional[str] = None
     zrr_classification: Optional[str] = None
     activite_principale_unite_legale: Optional[str] = None
+    libelle_activite_principale: Optional[str] = None
 
 class CompanyStats(BaseModel):
     total_companies: int
     ess_companies: int
-    mission_companies: int
     qpv_companies: int
     zrr_companies: int
     companies_with_multiple_tags: int
+    unique_communes: int
+    unique_activities: int
+
+class FilterOptions(BaseModel):
+    communes: List[str]
+    activities: List[str]
+    departments: List[str]
 
 def get_db_connection():
     """Get database connection"""
@@ -64,99 +71,80 @@ def get_db_connection():
 
 @app.get("/")
 async def root():
-    return {"message": "ESS Mission Companies API", "version": "1.0.0"}
+    return {"message": "Tabula Virtutis - ESS Companies API", "version": "2.0.0"}
 
 @app.get("/test")
 async def test():
-    return {"status": "ok", "message": "API is working"}
+    return {"status": "ok", "message": "Tabula Virtutis API is working"}
 
 @app.get("/companies", response_model=List[Company])
 async def get_companies(
-    ess: bool = Query(True, description="Include ESS companies"),
-    mission: bool = Query(True, description="Include Mission companies"),
-    qpv: bool = Query(False, description="Filter by QPV companies"),
-    zrr: bool = Query(False, description="Filter by ZRR companies"),
+    qpv: bool = Query(False, description="Filter by QPV companies only"),
+    zrr: bool = Query(False, description="Filter by ZRR companies only"),
+    commune: Optional[str] = Query(None, description="Filter by commune name"),
+    department: Optional[str] = Query(None, description="Filter by department code"),
+    activity_code: Optional[str] = Query(None, description="Filter by activity code"),
+    search: Optional[str] = Query(None, description="Search in company names"),
     limit: int = Query(1000, description="Maximum number of companies to return"),
     offset: int = Query(0, description="Number of companies to skip")
 ):
-    """Get companies with optional filters"""
+    """Get ESS companies with comprehensive filtering"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Build the main query using UNION to avoid duplicates
-        query_parts = []
-        
-        # ESS companies query
-        if ess:
-            ess_query = """
-                SELECT 
-                    siren, siret, denomination_unite_legale, libelle_commune, code_postal,
-                    latitude, longitude, 
-                    CASE WHEN in_qpv THEN TRUE ELSE FALSE END as in_qpv,
-                    CASE WHEN is_zrr THEN TRUE ELSE FALSE END as is_zrr,
-                    qpv_label, zrr_classification, activite_principale_unite_legale,
-                    'ESS' as source_table
-                FROM ess_companies_filtered_table
-                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-            """
-            
-            if qpv:
-                ess_query += " AND in_qpv = TRUE"
-            if zrr:
-                ess_query += " AND is_zrr = TRUE"
-                
-            query_parts.append(ess_query)
-        
-        # Mission companies query
-        if mission:
-            mission_query = """
-                SELECT 
-                    siren, siret, denomination_unite_legale, libelle_commune, code_postal,
-                    latitude, longitude,
-                    CASE WHEN in_qpv THEN TRUE ELSE FALSE END as in_qpv,
-                    CASE WHEN is_zrr THEN TRUE ELSE FALSE END as is_zrr,
-                    qpv_label, zrr_classification, activite_principale_unite_legale,
-                    'Mission' as source_table
-                FROM companies_societe_mission
-                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-            """
-            
-            if qpv:
-                mission_query += " AND in_qpv = TRUE"
-            if zrr:
-                mission_query += " AND is_zrr = TRUE"
-                
-            query_parts.append(mission_query)
-        
-        if not query_parts:
-            return []
-        
-        # Combine queries with UNION and deduplicate by siret
-        main_query = f"""
-            SELECT DISTINCT ON (siret)
+        # Build the base query
+        base_query = """
+            SELECT 
                 siren, siret, denomination_unite_legale, libelle_commune, code_postal,
-                latitude, longitude, in_qpv, is_zrr, qpv_label, zrr_classification, 
-                activite_principale_unite_legale, source_table
-            FROM (
-                {' UNION ALL '.join(query_parts)}
-            ) combined
-            ORDER BY siret, source_table
-            LIMIT {limit} OFFSET {offset}
+                latitude, longitude, 
+                CASE WHEN in_qpv THEN TRUE ELSE FALSE END as in_qpv,
+                CASE WHEN is_zrr THEN TRUE ELSE FALSE END as is_zrr,
+                qpv_label, zrr_classification, 
+                activite_principale_unite_legale,
+                libelle_activite_principale
+            FROM ess_companies_filtered_table
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
         """
         
-        cursor.execute(main_query)
+        # Add filters
+        filters = []
+        params = []
+        
+        if qpv:
+            filters.append("in_qpv = TRUE")
+        
+        if zrr:
+            filters.append("is_zrr = TRUE")
+            
+        if commune:
+            filters.append("LOWER(libelle_commune) LIKE LOWER(%s)")
+            params.append(f"%{commune}%")
+            
+        if department:
+            filters.append("code_postal LIKE %s")
+            params.append(f"{department}%")
+            
+        if activity_code:
+            filters.append("activite_principale_unite_legale LIKE %s")
+            params.append(f"{activity_code}%")
+            
+        if search:
+            filters.append("LOWER(denomination_unite_legale) LIKE LOWER(%s)")
+            params.append(f"%{search}%")
+        
+        # Combine query
+        if filters:
+            base_query += " AND " + " AND ".join(filters)
+        
+        base_query += f" ORDER BY denomination_unite_legale LIMIT {limit} OFFSET {offset}"
+        
+        cursor.execute(base_query, params)
         results = cursor.fetchall()
         
         companies = []
         for row in results:
-            tags = []
-            
-            # Determine tags based on source table and flags
-            if row[12] == 'ESS':  # source_table
-                tags.append('ESS')
-            elif row[12] == 'Mission':
-                tags.append('Mission')
+            tags = ['ESS']
             
             # Add QPV and ZRR tags if applicable
             if row[7]:  # in_qpv
@@ -175,59 +163,49 @@ async def get_companies(
                 tags=tags,
                 qpv_label=row[9],
                 zrr_classification=row[10],
-                activite_principale_unite_legale=row[11]
+                activite_principale_unite_legale=row[11],
+                libelle_activite_principale=row[12]
             ))
         
         cursor.close()
         conn.close()
         
-        logger.info(f"Returned {len(companies)} companies")
+        logger.info(f"Returned {len(companies)} ESS companies")
         return companies
         
     except Exception as e:
         logger.error(f"Error fetching companies: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/companies/batch")
-async def get_companies_batch(
-    batch_size: int = Query(500, description="Number of companies per batch"),
-    batch_number: int = Query(0, description="Batch number (0-based)"),
-    ess: bool = Query(True, description="Include ESS companies"),
-    mission: bool = Query(True, description="Include Mission companies"),
-    qpv: bool = Query(False, description="Filter by QPV companies"),
-    zrr: bool = Query(False, description="Filter by ZRR companies")
-):
-    """Get companies in batches for efficient map loading"""
-    offset = batch_number * batch_size
-    return await get_companies(
-        ess=ess, mission=mission, qpv=qpv, zrr=zrr,
-        limit=batch_size, offset=offset
-    )
 
 @app.get("/filter")
 async def filter_companies(
-    ess: bool = Query(True, description="Include ESS companies"),
-    mission: bool = Query(True, description="Include Mission companies"),
-    qpv: bool = Query(False, description="Filter by QPV companies"),
-    zrr: bool = Query(False, description="Filter by ZRR companies"),
+    qpv: bool = Query(False, description="Filter by QPV companies only"),
+    zrr: bool = Query(False, description="Filter by ZRR companies only"),
+    commune: Optional[str] = Query(None, description="Filter by commune name"),
+    department: Optional[str] = Query(None, description="Filter by department code"),
+    activity_code: Optional[str] = Query(None, description="Filter by activity code"),
+    search: Optional[str] = Query(None, description="Search in company names"),
     limit: int = Query(1000, description="Maximum number of companies to return"),
     offset: int = Query(0, description="Number of companies to skip")
 ):
-    """Filter companies - frontend-compatible endpoint"""
+    """Filter ESS companies - frontend-compatible endpoint"""
     try:
         companies = await get_companies(
-            ess=ess, mission=mission, qpv=qpv, zrr=zrr,
-            limit=limit, offset=offset
+            qpv=qpv, zrr=zrr, commune=commune, department=department,
+            activity_code=activity_code, search=search, limit=limit, offset=offset
         )
         
         return {
             "companies": companies,
             "total": len(companies),
             "filters_applied": {
-                "ess": ess,
-                "mission": mission,
                 "qpv": qpv,
-                "zrr": zrr
+                "zrr": zrr,
+                "commune": commune,
+                "department": department,
+                "activity_code": activity_code,
+                "search": search
             }
         }
         
@@ -235,67 +213,109 @@ async def filter_companies(
         logger.error(f"Error in filter endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/stats", response_model=CompanyStats)
-async def get_stats():
-    """Get company statistics"""
+@app.get("/filter-options", response_model=FilterOptions)
+async def get_filter_options():
+    """Get available filter options for the frontend"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # ESS companies count
-        cursor.execute("SELECT COUNT(*) FROM ess_companies_filtered_table WHERE latitude IS NOT NULL")
-        ess_count = cursor.fetchone()[0]
+        # Get unique communes
+        cursor.execute("""
+            SELECT DISTINCT libelle_commune 
+            FROM ess_companies_filtered_table 
+            WHERE libelle_commune IS NOT NULL 
+            ORDER BY libelle_commune 
+            LIMIT 100
+        """)
+        communes = [row[0] for row in cursor.fetchall()]
         
-        # Mission companies count
-        cursor.execute("SELECT COUNT(*) FROM companies_societe_mission WHERE latitude IS NOT NULL")
-        mission_count = cursor.fetchone()[0]
+        # Get unique activity codes and labels
+        cursor.execute("""
+            SELECT DISTINCT activite_principale_unite_legale, libelle_activite_principale
+            FROM ess_companies_filtered_table 
+            WHERE activite_principale_unite_legale IS NOT NULL 
+            ORDER BY libelle_activite_principale 
+            LIMIT 50
+        """)
+        activities = [f"{row[0]} - {row[1]}" for row in cursor.fetchall()]
+        
+        # Get unique departments (first 2 digits of postal code)
+        cursor.execute("""
+            SELECT DISTINCT LEFT(code_postal, 2) as dept
+            FROM ess_companies_filtered_table 
+            WHERE code_postal IS NOT NULL AND LENGTH(code_postal) >= 2
+            ORDER BY dept
+        """)
+        departments = [row[0] for row in cursor.fetchall()]
+        
+        cursor.close()
+        conn.close()
+        
+        return FilterOptions(
+            communes=communes,
+            activities=activities,
+            departments=departments
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching filter options: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/stats", response_model=CompanyStats)
+async def get_stats():
+    """Get ESS company statistics"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Total ESS companies count
+        cursor.execute("SELECT COUNT(*) FROM ess_companies_filtered_table WHERE latitude IS NOT NULL")
+        total_count = cursor.fetchone()[0]
         
         # QPV companies count
-        cursor.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT siren FROM ess_companies_filtered_table WHERE in_qpv = TRUE AND latitude IS NOT NULL
-                UNION
-                SELECT siren FROM companies_societe_mission WHERE in_qpv = TRUE AND latitude IS NOT NULL
-            ) as qpv_companies
-        """)
+        cursor.execute("SELECT COUNT(*) FROM ess_companies_filtered_table WHERE in_qpv = TRUE AND latitude IS NOT NULL")
         qpv_count = cursor.fetchone()[0]
         
         # ZRR companies count
-        cursor.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT siren FROM ess_companies_filtered_table WHERE is_zrr = TRUE AND latitude IS NOT NULL
-                UNION
-                SELECT siren FROM companies_societe_mission WHERE is_zrr = TRUE AND latitude IS NOT NULL
-            ) as zrr_companies
-        """)
+        cursor.execute("SELECT COUNT(*) FROM ess_companies_filtered_table WHERE is_zrr = TRUE AND latitude IS NOT NULL")
         zrr_count = cursor.fetchone()[0]
         
-        # Companies with multiple tags
+        # Companies with multiple tags (QPV + ZRR)
         cursor.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT siren FROM ess_companies_filtered_table 
-                WHERE latitude IS NOT NULL 
-                AND (in_qpv = TRUE OR is_zrr = TRUE)
-                UNION
-                SELECT siren FROM companies_societe_mission 
-                WHERE latitude IS NOT NULL 
-                AND (in_qpv = TRUE OR is_zrr = TRUE)
-            ) as multi_tag_companies
+            SELECT COUNT(*) FROM ess_companies_filtered_table 
+            WHERE latitude IS NOT NULL 
+            AND (in_qpv = TRUE AND is_zrr = TRUE)
         """)
         multi_tag_count = cursor.fetchone()[0]
         
-        total_count = ess_count + mission_count
+        # Unique communes count
+        cursor.execute("""
+            SELECT COUNT(DISTINCT libelle_commune) 
+            FROM ess_companies_filtered_table 
+            WHERE libelle_commune IS NOT NULL AND latitude IS NOT NULL
+        """)
+        unique_communes = cursor.fetchone()[0]
+        
+        # Unique activities count
+        cursor.execute("""
+            SELECT COUNT(DISTINCT activite_principale_unite_legale) 
+            FROM ess_companies_filtered_table 
+            WHERE activite_principale_unite_legale IS NOT NULL AND latitude IS NOT NULL
+        """)
+        unique_activities = cursor.fetchone()[0]
         
         cursor.close()
         conn.close()
         
         return CompanyStats(
             total_companies=total_count,
-            ess_companies=ess_count,
-            mission_companies=mission_count,
+            ess_companies=total_count,  # All companies are ESS
             qpv_companies=qpv_count,
             zrr_companies=zrr_count,
-            companies_with_multiple_tags=multi_tag_count
+            companies_with_multiple_tags=multi_tag_count,
+            unique_communes=unique_communes,
+            unique_activities=unique_activities
         )
         
     except Exception as e:

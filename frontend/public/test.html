@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESS Mission Companies Map</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            max-width: 600px;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .api-test {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .error {
+            background: #f44336;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #4CAF50;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗺️ ESS Mission Companies Map</h1>
+        <p>Discover social economy and mission-driven companies across France</p>
+        
+        <div class="status">
+            <h3>System Status</h3>
+            <div id="api-status">Testing API connection...</div>
+            <div id="stats"></div>
+        </div>
+        
+        <div class="api-test">
+            <h4>API Test</h4>
+            <button onclick="testAPI()">Test API Connection</button>
+            <button onclick="loadCompanies()">Load Sample Companies</button>
+            <div id="api-result"></div>
+        </div>
+        
+        <div class="status">
+            <h3>Next Steps</h3>
+            <p>Once the API is working, the interactive map will load automatically.</p>
+            <p>You'll be able to explore 37,000+ ESS and Mission companies with QPV and ZRR data.</p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://chyll-lead-mvp-production.up.railway.app';
+        
+        async function testAPI() {
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch(`${API_URL}/`);
+                const data = await response.json();
+                resultDiv.innerHTML = `<div class="success">✅ API Connected: ${data.message}</div>`;
+                updateAPIStatus('✅ Connected');
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ API Error: ${error.message}</div>`;
+                updateAPIStatus('❌ Connection Failed');
+            }
+        }
+        
+        async function loadCompanies() {
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.innerHTML = 'Loading companies...';
+            
+            try {
+                const response = await fetch(`${API_URL}/companies/batch?batch_size=5&batch_number=0`);
+                const companies = await response.json();
+                resultDiv.innerHTML = `<div class="success">✅ Loaded ${companies.length} companies</div>`;
+                
+                if (companies.length > 0) {
+                    const sample = companies[0];
+                    resultDiv.innerHTML += `<div style="margin-top: 10px; font-size: 14px;">
+                        <strong>Sample Company:</strong><br>
+                        ${sample.denomination_unite_legale || 'N/A'}<br>
+                        ${sample.libelle_commune || 'N/A'}<br>
+                        Tags: ${sample.tags.join(', ')}
+                    </div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ Error loading companies: ${error.message}</div>`;
+            }
+        }
+        
+        function updateAPIStatus(status) {
+            document.getElementById('api-status').innerHTML = status;
+        }
+        
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_URL}/stats`);
+                const stats = await response.json();
+                document.getElementById('stats').innerHTML = `
+                    <div style="font-size: 14px; margin-top: 10px;">
+                        <strong>Database Stats:</strong><br>
+                        Total: ${stats.total_companies.toLocaleString()} companies<br>
+                        ESS: ${stats.ess_companies.toLocaleString()} | Mission: ${stats.mission_companies.toLocaleString()}<br>
+                        QPV: ${stats.qpv_companies.toLocaleString()} | ZRR: ${stats.zrr_companies.toLocaleString()}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        // Auto-test on page load
+        window.onload = function() {
+            testAPI();
+            loadStats();
+        };
+    </script>
+</body>
+</html>
