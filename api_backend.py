@@ -175,7 +175,7 @@ async def get_companies_by_region(
         
         # Define region-specific queries
         if region.lower() == "mayotte":
-            # Mayotte coordinates and postal codes
+            # Mayotte - focus on Mamoudzou and surrounding areas
             query = """
                 SELECT 
                     siren, siret, denomination_unite_legale, libelle_commune, code_postal,
@@ -183,7 +183,7 @@ async def get_companies_by_region(
                     activite_principale_unite_legale
                 FROM ess_companies_filtered_table
                 WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-                AND (code_postal LIKE '976%' OR libelle_commune ILIKE '%mayotte%')
+                AND (code_postal LIKE '976%' OR libelle_commune ILIKE '%mamoudzou%' OR libelle_commune ILIKE '%mayotte%')
                 ORDER BY denomination_unite_legale
                 LIMIT %s
             """
