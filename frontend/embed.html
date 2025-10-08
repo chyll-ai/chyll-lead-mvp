@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESS Ecosystem Map</title>
+    <title>ESS Ecosystem Map - Embeddable</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * {
@@ -11,207 +11,189 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #f8fafc;
-            height: 100vh;
-            overflow: hidden;
+            color: #1e293b;
         }
-        
-        .app {
+
+        .embed-container {
+            width: 100%;
             height: 100vh;
             display: flex;
             flex-direction: column;
         }
-        
+
         .header {
             background: white;
-            padding: 1rem 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 12px 16px;
+            border-bottom: 1px solid #e2e8f0;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
         }
-        
-        .header h1 {
-            color: #1f2937;
-            font-size: 1.5rem;
-            font-weight: 600;
-        }
-        
-        .stats {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-        }
-        
-        .stat {
-            background: #3b82f6;
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-size: 0.875rem;
+
+        .loading-status {
+            font-size: 14px;
+            color: #64748b;
             font-weight: 500;
         }
-        
+
         .filters {
             background: white;
-            padding: 1rem 2rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            padding: 12px 16px;
+            border-bottom: 1px solid #e2e8f0;
+            flex-shrink: 0;
         }
-        
+
         .search-group {
             display: flex;
-            gap: 1rem;
+            gap: 8px;
+            margin-bottom: 8px;
         }
-        
+
         .search-group input {
             flex: 1;
-            padding: 0.5rem;
+            padding: 8px 12px;
             border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
-            font-size: 0.875rem;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
         }
-        
+
+        .search-group input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
         .filter-buttons {
             display: flex;
-            gap: 0.5rem;
+            gap: 8px;
+            flex-wrap: wrap;
         }
-        
+
         .filter-btn {
-            padding: 0.75rem 1.5rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
+            padding: 6px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
             background: white;
+            color: #374151;
+            font-size: 12px;
             cursor: pointer;
-            font-size: 0.875rem;
-            font-weight: 500;
             transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
         }
-        
+
         .filter-btn:hover {
+            background: #f3f4f6;
+        }
+
+        .filter-btn.active {
+            background: #3b82f6;
+            color: white;
             border-color: #3b82f6;
         }
-        
-        .filter-btn.active {
-            background: #1f2937;
-            color: white;
-            border-color: #1f2937;
-        }
-        
+
         .map-container {
             flex: 1;
             position: relative;
+            min-height: 0;
         }
-        
+
         .map {
-            height: 100%;
             width: 100%;
+            height: 100%;
         }
-        
+
         .loading {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            text-align: center;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             z-index: 1000;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
         }
-        
+
         .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f4f6;
-            border-top: 4px solid #3b82f6;
+            width: 32px;
+            height: 32px;
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #3b82f6;
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin: 0 auto 1rem;
+            margin-bottom: 12px;
         }
-        
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
-        .popup-content {
-            max-width: 300px;
+
+        .loading p {
+            color: #64748b;
+            font-size: 14px;
         }
-        
-        .popup-title {
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: #1f2937;
-        }
-        
-        .popup-info {
-            font-size: 0.875rem;
-            color: #6b7280;
-            margin-bottom: 0.5rem;
-        }
-        
-        .badges {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        
-        .badge {
-            background: #3b82f6;
-            color: white;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 500;
-        }
-        
-        .badge.mission { background: #8b5cf6; }
-        .badge.ess { background: #10b981; }
-        .badge.qpv { background: #f59e0b; }
-        .badge.zrr { background: #ef4444; }
-        
+
         .legend {
             position: absolute;
-            bottom: 1rem;
-            right: 1rem;
+            bottom: 16px;
+            right: 16px;
             background: white;
-            padding: 1rem;
+            padding: 12px;
             border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            font-size: 12px;
             z-index: 1000;
         }
-        
+
         .legend-item {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
+            margin-bottom: 4px;
         }
-        
+
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
+
         .legend-marker {
             width: 12px;
             height: 12px;
             border-radius: 50%;
+            margin-right: 8px;
         }
-        
-        .legend-marker.mission { background: #8b5cf6; }
+
         .legend-marker.ess { background: #10b981; }
         .legend-marker.qpv { background: #f59e0b; }
         .legend-marker.zrr { background: #ef4444; }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .search-group {
+                flex-direction: column;
+            }
+            
+            .filter-buttons {
+                justify-content: center;
+            }
+            
+            .legend {
+                bottom: 8px;
+                right: 8px;
+                padding: 8px;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="app">
+    <div class="embed-container">
         <div class="header">
             <div class="loading-status" id="loading-status">Chargement...</div>
         </div>
@@ -245,10 +227,6 @@
         
         <div class="legend">
             <div class="legend-item">
-                <div class="legend-marker mission"></div>
-                <span>Mission</span>
-            </div>
-            <div class="legend-item">
                 <div class="legend-marker ess"></div>
                 <span>ESS</span>
             </div>
@@ -278,11 +256,11 @@
             console.log('Initializing map...');
             // Start centered on Lille, France
             map = L.map('map').setView([50.6292, 3.0573], 11);
-            
+
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(map);
-            
+
             console.log('Map initialized - centered on Lille');
             hideLoading();
             loadLilleCompanies();
@@ -426,7 +404,7 @@
             }
         }
         
-        // Search companies by postal code (exact prefix matching)
+        // Search companies by postal code (first 2 digits = department)
         async function searchByPostal() {
             const postalCode = document.getElementById('postal-input').value;
             if (!postalCode.trim()) {
@@ -435,14 +413,14 @@
                 return;
             }
             
-            // Use the full postal code prefix for more precise matching
-            const postalPrefix = postalCode.trim();
+            // Extract first 2 digits for department code
+            const departmentCode = postalCode.trim().substring(0, 2);
             
-            showLoading(`Code postal: "${postalPrefix}"...`);
+            showLoading(`Département: "${departmentCode}"...`);
             
             try {
                 const params = new URLSearchParams({
-                    code_postal: postalPrefix,
+                    department: departmentCode,
                     limit: 50000
                 });
                 
@@ -459,11 +437,11 @@
                 
                 companies = data.companies || [];
                 
-                // Center map on postal code area (approximate center)
-                centerMapOnPostalCode(postalPrefix);
+                // Center map on department (approximate center)
+                centerMapOnDepartment(departmentCode);
                 
                 updateMap();
-                document.getElementById('loading-status').textContent = `Code postal ${postalPrefix}`;
+                document.getElementById('loading-status').textContent = `Département ${departmentCode}`;
                 
             } catch (error) {
                 console.error('Error searching by postal code:', error);
@@ -621,59 +599,6 @@
             }
         }
         
-        // Center map on postal code area (smart coordinates based on prefix)
-        function centerMapOnPostalCode(postalPrefix) {
-            // For 2-digit prefixes, use department coordinates
-            if (postalPrefix.length === 2) {
-                centerMapOnDepartment(postalPrefix);
-                return;
-            }
-            
-            // For 3+ digit prefixes, use approximate coordinates
-            const postalCoordinates = {
-                '660': [42.6886, 2.8948],   // Perpignan area
-                '661': [42.6886, 2.8948],   // Perpignan area
-                '662': [42.6886, 2.8948],   // Perpignan area
-                '663': [42.6886, 2.8948],   // Perpignan area
-                '664': [42.6886, 2.8948],   // Perpignan area
-                '665': [42.6886, 2.8948],   // Perpignan area
-                '666': [42.6886, 2.8948],   // Perpignan area
-                '667': [42.6886, 2.8948],   // Perpignan area
-                '668': [42.6886, 2.8948],   // Perpignan area
-                '669': [42.6886, 2.8948],   // Perpignan area
-                '750': [48.8566, 2.3522],   // Paris
-                '751': [48.8566, 2.3522],   // Paris
-                '752': [48.8566, 2.3522],   // Paris
-                '753': [48.8566, 2.3522],   // Paris
-                '754': [48.8566, 2.3522],   // Paris
-                '755': [48.8566, 2.3522],   // Paris
-                '756': [48.8566, 2.3522],   // Paris
-                '757': [48.8566, 2.3522],   // Paris
-                '758': [48.8566, 2.3522],   // Paris
-                '759': [48.8566, 2.3522],   // Paris
-                '590': [50.6292, 3.0573],   // Lille area
-                '591': [50.6292, 3.0573],   // Lille area
-                '592': [50.6292, 3.0573],   // Lille area
-                '593': [50.6292, 3.0573],   // Lille area
-                '594': [50.6292, 3.0573],   // Lille area
-                '595': [50.6292, 3.0573],   // Lille area
-                '596': [50.6292, 3.0573],   // Lille area
-                '597': [50.6292, 3.0573],   // Lille area
-                '598': [50.6292, 3.0573],   // Lille area
-                '599': [50.6292, 3.0573]    // Lille area
-            };
-            
-            const coords = postalCoordinates[postalPrefix];
-            if (coords) {
-                map.setView(coords, 12);  // Postal code level zoom
-                mapManuallyCentered = true;
-            } else {
-                // Fallback to department-level centering
-                const deptCode = postalPrefix.substring(0, 2);
-                centerMapOnDepartment(deptCode);
-            }
-        }
-        
         // Update map with current companies
         function updateMap() {
             console.log('Updating map with', companies.length, 'companies');
@@ -682,24 +607,42 @@
             currentMarkers.forEach(marker => map.removeLayer(marker));
             currentMarkers = [];
             
-            // Add markers
-            companies.forEach((company, index) => {
-                const icon = createCustomIcon(company);
-                const marker = L.marker([company.latitude, company.longitude], { icon }).addTo(map);
-                
-                const popupContent = `
-                    <div class="popup-content">
-                        <div class="popup-title">${company.denomination_unite_legale || 'Nom non disponible'}</div>
-                        <div class="popup-info">📍 ${company.libelle_commune || 'Commune non disponible'}</div>
-                        ${company.activite_principale_unite_legale ? `<div class="popup-info">🏢 ${company.activite_principale_unite_legale}</div>` : ''}
-                        <div class="badges">
-                            ${company.tags.map(tag => `<span class="badge ${tag.toLowerCase()}">${tag}</span>`).join('')}
+            // Add markers for each company
+            companies.forEach(company => {
+                if (company.latitude && company.longitude) {
+                    const marker = L.marker([company.latitude, company.longitude], {
+                        icon: createCustomIcon(company)
+                    });
+                    
+                    const popupContent = `
+                        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.4;">
+                            <div style="font-weight: 600; margin-bottom: 8px; color: #1e293b;">
+                                ${company.denomination_unite_legale || 'Nom non disponible'}
+                            </div>
+                            <div style="color: #64748b; margin-bottom: 4px;">
+                                📍 ${company.libelle_commune || 'Commune non disponible'}
+                            </div>
+                            <div style="color: #64748b; margin-bottom: 4px;">
+                                📮 ${company.code_postal || 'Code postal non disponible'}
+                            </div>
+                            ${company.activite_principale_unite_legale ? `
+                                <div style="color: #64748b; margin-bottom: 8px;">
+                                    🏢 ${company.activite_principale_unite_legale}
+                                </div>
+                            ` : ''}
+                            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                ${company.tags.map(tag => `
+                                    <span style="background: ${getTagColor(tag)}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">
+                                        ${tag}
+                                    </span>
+                                `).join('')}
+                            </div>
                         </div>
-                    </div>
-                `;
-                
-                marker.bindPopup(popupContent);
-                currentMarkers.push(marker);
+                    `;
+                    
+                    marker.bindPopup(popupContent);
+                    currentMarkers.push(marker);
+                }
             });
             
             // Only fit bounds if we haven't manually centered the map
@@ -724,82 +667,59 @@
         
         // Create custom icon
         function createCustomIcon(company) {
-            let color = '#6B7280';
-            let icon = '🏢';
+            const tags = company.tags || [];
+            let color = '#10b981'; // Default ESS green
             
-            if (company.tags.includes('Mission')) {
-                color = '#8B5CF6';
-                icon = '🎯';
-            } else if (company.tags.includes('ESS')) {
-                color = '#10B981';
-                icon = '🤝';
-            }
-            
-            // Special colors for multiple tags
-            if (company.tags.length > 1) {
-                if (company.tags.includes('Mission') && company.tags.includes('ESS')) {
-                    color = '#7C3AED';
-                    icon = '🌟';
-                } else if (company.tags.includes('QPV') || company.tags.includes('ZRR')) {
-                    color = '#F59E0B';
-                    icon = '🏘️';
-                }
+            if (tags.includes('ZRR')) {
+                color = '#ef4444'; // Red for ZRR
+            } else if (tags.includes('QPV')) {
+                color = '#f59e0b'; // Orange for QPV
             }
             
             return L.divIcon({
                 className: 'custom-marker',
-                html: `
-                    <div style="
-                        background: ${color};
-                        width: 24px;
-                        height: 24px;
-                        border-radius: 50%;
-                        border: 3px solid white;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 12px;
-                        color: white;
-                        font-weight: bold;
-                    ">
-                        ${icon}
-                    </div>
-                `,
-                iconSize: [30, 30],
-                iconAnchor: [15, 15]
+                html: `<div style="width: 8px; height: 8px; background: ${color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>`,
+                iconSize: [12, 12],
+                iconAnchor: [6, 6]
             });
         }
         
-        // Update statistics
-        function updateStats() {
-            document.getElementById('company-count').textContent = `${companies.length} entreprises`;
-            document.getElementById('loading-status').textContent = 'Prêt';
+        // Get tag color
+        function getTagColor(tag) {
+            switch(tag) {
+                case 'ESS': return '#10b981';
+                case 'QPV': return '#f59e0b';
+                case 'ZRR': return '#ef4444';
+                default: return '#6b7280';
+            }
         }
         
-        // Show/hide loading
+        // Show loading
         function showLoading(message) {
             const loading = document.getElementById('loading');
             loading.querySelector('p').textContent = message;
-            loading.style.display = 'block';
+            loading.style.display = 'flex';
         }
         
+        // Hide loading
         function hideLoading() {
             document.getElementById('loading').style.display = 'none';
         }
         
-        // Filter button handlers
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const filter = btn.dataset.filter;
-                activeFilters[filter] = !activeFilters[filter];
-                
-                btn.classList.toggle('active', activeFilters[filter]);
-                
-                console.log('Filters updated:', activeFilters);
-                
-                // Always respect current city context when applying filters
-                loadCompanies();
+        // Filter button event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const filter = btn.dataset.filter;
+                    activeFilters[filter] = !activeFilters[filter];
+                    
+                    btn.classList.toggle('active', activeFilters[filter]);
+                    
+                    console.log('Filters updated:', activeFilters);
+                    
+                    // Always respect current city context when applying filters
+                    loadCompanies();
+                });
             });
         });
         

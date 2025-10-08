@@ -74,6 +74,7 @@ async def get_companies(
     zrr: bool = Query(False, description="Filter by ZRR companies only"),
     commune: Optional[str] = Query(None, description="Filter by commune name"),
     department: Optional[str] = Query(None, description="Filter by department code"),
+    code_postal: Optional[str] = Query(None, description="Filter by postal code prefix"),
     activity_code: Optional[str] = Query(None, description="Filter by activity code"),
     search: Optional[str] = Query(None, description="Search in company names"),
     limit: int = Query(1000, description="Maximum number of companies to return"),
@@ -111,6 +112,10 @@ async def get_companies(
         if department:
             filters.append("code_postal LIKE %s")
             params.append(f"{department}%")
+            
+        if code_postal:
+            filters.append("code_postal LIKE %s")
+            params.append(f"{code_postal}%")
             
         if activity_code:
             filters.append("activite_principale_unite_legale LIKE %s")
@@ -260,6 +265,7 @@ async def filter_companies(
     zrr: bool = Query(False, description="Filter by ZRR companies only"),
     commune: Optional[str] = Query(None, description="Filter by commune name"),
     department: Optional[str] = Query(None, description="Filter by department code"),
+    code_postal: Optional[str] = Query(None, description="Filter by postal code prefix"),
     activity_code: Optional[str] = Query(None, description="Filter by activity code"),
     search: Optional[str] = Query(None, description="Search in company names"),
     limit: int = Query(1000, description="Maximum number of companies to return"),
@@ -269,7 +275,7 @@ async def filter_companies(
     try:
         companies = await get_companies(
             qpv=qpv, zrr=zrr, commune=commune, department=department,
-            activity_code=activity_code, search=search, limit=limit, offset=offset
+            code_postal=code_postal, activity_code=activity_code, search=search, limit=limit, offset=offset
         )
         
         return {
