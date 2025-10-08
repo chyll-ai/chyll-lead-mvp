@@ -125,6 +125,7 @@ async def fix_saint_denis_zrr():
 
 @app.get("/companies", response_model=List[Company])
 async def get_companies(
+    ess: bool = Query(False, description="Filter by ESS companies only (excludes ZRR)"),
     qpv: bool = Query(False, description="Filter by QPV companies only"),
     zrr: bool = Query(False, description="Filter by ZRR companies only"),
     commune: Optional[str] = Query(None, description="Filter by commune name"),
@@ -153,6 +154,9 @@ async def get_companies(
         # Add filters
         filters = []
         params = []
+        
+        if ess:
+            filters.append("is_zrr = FALSE")  # ESS companies exclude ZRR
         
         if qpv:
             filters.append("in_qpv = TRUE")
@@ -316,6 +320,7 @@ async def get_companies_by_region(
 
 @app.get("/filter")
 async def filter_companies(
+    ess: bool = Query(False, description="Filter by ESS companies only (excludes ZRR)"),
     qpv: bool = Query(False, description="Filter by QPV companies only"),
     zrr: bool = Query(False, description="Filter by ZRR companies only"),
     commune: Optional[str] = Query(None, description="Filter by commune name"),
@@ -329,7 +334,7 @@ async def filter_companies(
     """Filter ESS companies - frontend-compatible endpoint"""
     try:
         companies = await get_companies(
-            qpv=qpv, zrr=zrr, commune=commune, department=department,
+            ess=ess, qpv=qpv, zrr=zrr, commune=commune, department=department,
             code_postal=code_postal, activity_code=activity_code, search=search, limit=limit, offset=offset
         )
         
@@ -337,6 +342,7 @@ async def filter_companies(
             "companies": companies,
             "total": len(companies),
             "filters_applied": {
+                "ess": ess,
                 "qpv": qpv,
                 "zrr": zrr,
                 "commune": commune,
