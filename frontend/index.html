@@ -249,23 +249,26 @@
             font-style: italic;
         }
         
-        /* Cluster marker styles */
+        /* Cluster marker styles - LARGER CLUSTERS */
         .cluster-marker {
             background: #3b82f6;
-            border: 2px solid white;
+            border: 3px solid white;
             border-radius: 50%;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.4);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
             color: white;
-            font-size: 12px;
+            font-size: 14px;
+            min-width: 30px;
+            min-height: 30px;
         }
         
         .cluster-content {
             text-align: center;
             line-height: 1;
+            font-weight: bold;
         }
         
         .cluster-companies {
@@ -990,8 +993,8 @@
                 [bounds.getNorth() + padding, bounds.getEast() + padding]
             );
             
-            // Determine clustering threshold based on zoom level (less aggressive)
-            const clusterThreshold = zoom < 6 ? 2000 : zoom < 8 ? 1000 : zoom < 10 ? 500 : zoom < 12 ? 200 : 100;
+            // Determine clustering threshold based on zoom level (larger clusters)
+            const clusterThreshold = zoom < 8 ? 5000 : zoom < 10 ? 3000 : zoom < 12 ? 2000 : zoom < 14 ? 1000 : 500;
             
             // Filter companies within current viewport (with padding)
             const visibleCompanies = companies.filter(company => {
@@ -1052,12 +1055,13 @@
             });
         }
         
-        // Create clustered markers for performance
+        // Create clustered markers for performance - LARGER GEOGRAPHICAL CLUSTERS
         function createClusteredMarkers(companiesToShow, bounds, zoom) {
-            const gridSize = zoom < 8 ? 0.5 : zoom < 10 ? 0.2 : zoom < 12 ? 0.1 : 0.05;
+            // Larger grid size for regional clustering
+            const gridSize = zoom < 8 ? 2.0 : zoom < 10 ? 1.0 : zoom < 12 ? 0.5 : zoom < 14 ? 0.2 : 0.1;
             const clusters = new Map();
             
-            // Group companies into clusters
+            // Group companies into larger geographical clusters
             companiesToShow.forEach(company => {
                 const clusterKey = `${Math.floor(company.latitude / gridSize)}_${Math.floor(company.longitude / gridSize)}`;
                 
@@ -1067,21 +1071,23 @@
                 clusters.get(clusterKey).push(company);
             });
             
-            // Create cluster markers
+            // Create cluster markers with larger minimum cluster size
             clusters.forEach((clusterCompanies, key) => {
-                if (clusterCompanies.length === 1) {
-                    // Single company - show individual marker
+                if (clusterCompanies.length < 5) {
+                    // Small clusters - show individual markers
                     createIndividualMarkers(clusterCompanies);
                 } else {
-                    // Multiple companies - show cluster marker
+                    // Large clusters - show cluster marker
                     const avgLat = clusterCompanies.reduce((sum, c) => sum + c.latitude, 0) / clusterCompanies.length;
                     const avgLng = clusterCompanies.reduce((sum, c) => sum + c.longitude, 0) / clusterCompanies.length;
                     
+                    // Larger cluster icon for bigger clusters
+                    const clusterSize = Math.min(Math.max(clusterCompanies.length / 100, 30), 80);
                     const clusterIcon = L.divIcon({
                         className: 'cluster-marker',
                         html: `<div class="cluster-content">${clusterCompanies.length}</div>`,
-                        iconSize: [30, 30],
-                        iconAnchor: [15, 15]
+                        iconSize: [clusterSize, clusterSize],
+                        iconAnchor: [clusterSize/2, clusterSize/2]
                     });
                     
                     const clusterMarker = L.marker([avgLat, avgLng], { icon: clusterIcon }).addTo(map);
@@ -1092,10 +1098,10 @@
                             <div class="popup-title">${clusterCompanies.length} entreprises</div>
                             <div class="popup-info">📍 ${clusterCompanies[0].libelle_commune || 'Zone'}</div>
                             <div class="cluster-companies">
-                                ${clusterCompanies.slice(0, 5).map(company => 
+                                ${clusterCompanies.slice(0, 10).map(company => 
                                     `<div class="cluster-company">${company.denomination_unite_legale || 'Nom non disponible'}</div>`
                                 ).join('')}
-                                ${clusterCompanies.length > 5 ? `<div class="cluster-more">... et ${clusterCompanies.length - 5} autres</div>` : ''}
+                                ${clusterCompanies.length > 10 ? `<div class="cluster-more">... et ${clusterCompanies.length - 10} autres</div>` : ''}
                             </div>
                         </div>
                     `;
