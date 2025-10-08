@@ -157,6 +157,7 @@ async def get_companies(
         
         if ess:
             filters.append("is_zrr = FALSE")  # ESS companies exclude ZRR
+            logger.info(f"ESS filter applied: is_zrr = FALSE")
         
         if qpv:
             filters.append("in_qpv = TRUE")
@@ -187,8 +188,11 @@ async def get_companies(
         # Combine query
         if filters:
             query += " AND " + " AND ".join(filters)
+            logger.info(f"Applied filters: {filters}")
         
         query += f" ORDER BY denomination_unite_legale, siren LIMIT {limit} OFFSET {offset}"
+        logger.info(f"Final query: {query}")
+        logger.info(f"Query params: {params}")
         
         cursor.execute(query, params)
         results = cursor.fetchall()
