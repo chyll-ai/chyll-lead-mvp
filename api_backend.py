@@ -279,7 +279,7 @@ async def get_stats():
                 UNION
                 SELECT siren FROM companies_societe_mission 
                 WHERE latitude IS NOT NULL 
-                AND (societe_mission_unite_legale = 'T' OR economie_sociale_solidaire_unite_legale = 'T' OR in_qpv = TRUE OR is_zrr = TRUE)
+                AND (in_qpv = TRUE OR is_zrr = TRUE)
             ) as multi_tag_companies
         """)
         multi_tag_count = cursor.fetchone()[0]
