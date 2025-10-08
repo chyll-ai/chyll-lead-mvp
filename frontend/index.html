@@ -232,6 +232,23 @@
             font-weight: 600;
         }
         
+        .filter-checkbox.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: #f9fafb;
+            border-color: #d1d5db;
+        }
+        
+        .filter-checkbox.disabled:hover {
+            border-color: #d1d5db;
+            background: #f9fafb;
+        }
+        
+        .filter-checkbox.disabled .label {
+            color: #6b7280;
+            font-style: italic;
+        }
+        
         .load-more-btn {
             background: #3b82f6;
             color: white;
@@ -280,10 +297,10 @@
                     <span class="emoji">🏘️</span>
                     <span class="label">QPV</span>
                 </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" id="zrr-filter" checked onchange="toggleZRRFilter()">
+                <label class="filter-checkbox disabled">
+                    <input type="checkbox" id="zrr-filter" disabled>
                     <span class="emoji">🌾</span>
-                    <span class="label">ZRR</span>
+                    <span class="label">ZRR - Bientôt disponible</span>
                 </label>
             </div>
         </div>
@@ -335,7 +352,7 @@
             hideLoading();
             loadLilleCompanies();
             loadQPVCompanies(); // Load persistent QPV companies
-            loadZRRCompanies(); // Load persistent ZRR companies
+            // ZRR companies will be loaded only when user checks the ZRR filter
         }
         
         // Load Lille companies for initial view
@@ -470,9 +487,8 @@
                 companies = data.companies || [];
                 hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
                 
-                // Show result count in status
-                const resultCount = companies.length;
-                document.getElementById('loading-status').textContent = `${currentCity} (${resultCount} résultats)`;
+                // Show clean status
+                document.getElementById('loading-status').textContent = `${currentCity}`;
                 
                 // Show/hide Load More button
                 updateLoadMoreButton();
@@ -547,9 +563,8 @@
                 companies = data.companies || [];
                 hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
                 
-                // Show result count in status
-                const resultCount = companies.length;
-                document.getElementById('loading-status').textContent = `Code postal ${postalPrefix} (${resultCount} résultats)`;
+                // Show clean status
+                document.getElementById('loading-status').textContent = `Code postal ${postalPrefix}`;
                 
                 // Show/hide Load More button
                 updateLoadMoreButton();
@@ -622,9 +637,8 @@
                     );
                 }
                 
-                // Show result count in status
-                const resultCount = companies.length;
-                document.getElementById('loading-status').textContent = `Activité ${activityCode} - ${currentCity} (${resultCount} résultats)`;
+                // Show clean status
+                document.getElementById('loading-status').textContent = `Activité ${activityCode} - ${currentCity}`;
                 
                 // Show/hide Load More button
                 updateLoadMoreButton();
@@ -705,7 +719,7 @@
                 document.getElementById('loading-status').textContent = 
                     `${currentSearchType === 'postal' ? 'Code postal' : 
                       currentSearchType === 'city' ? currentSearchTerm : 
-                      'Activité'} ${currentSearchTerm} (${batchCount} résultats - page ${Math.floor(currentOffset / 2000) + 1})`;
+                      'Activité'} ${currentSearchTerm}`;
                 
                 // Clear existing markers and show new ones
                 clearMapMarkers();
@@ -780,10 +794,15 @@
             console.log('ZRR filter:', zrrFilter);
             
             if (zrrFilter) {
-                // Show ZRR markers
-                zrrMarkers.forEach(marker => {
-                    marker.addTo(map);
-                });
+                // Load ZRR companies if not already loaded, then show markers
+                if (zrrCompanies.length === 0) {
+                    loadZRRCompanies();
+                } else {
+                    // Show existing ZRR markers
+                    zrrMarkers.forEach(marker => {
+                        marker.addTo(map);
+                    });
+                }
             } else {
                 // Hide ZRR markers
                 zrrMarkers.forEach(marker => {
