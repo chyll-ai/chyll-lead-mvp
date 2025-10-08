@@ -338,6 +338,7 @@
         let activeFilters = { qpv: false, zrr: false };
         let currentCity = 'LILLE';  // Track current city context
         let mapManuallyCentered = false;  // Track if map was manually centered
+        let popupOpen = false;  // Track if popup is open to prevent viewport updates
         
         // Global variables for QPV and ZRR persistence
         let qpvCompanies = [];  // Persistent QPV companies
@@ -362,10 +363,19 @@
                 // Debounce updates to avoid too frequent re-rendering
                 clearTimeout(updateTimeout);
                 updateTimeout = setTimeout(() => {
-                    if (companies.length > 0) {
+                    if (companies.length > 0 && !popupOpen) {
                         updateMap();
                     }
-                }, 100);
+                }, 500); // Increased from 100ms to 500ms for less sensitivity
+            });
+            
+            // Track popup state
+            map.on('popupopen', function() {
+                popupOpen = true;
+            });
+            
+            map.on('popupclose', function() {
+                popupOpen = false;
             });
             
             console.log('Map initialized - centered on Lille');
@@ -969,18 +979,25 @@
             // Clear existing markers
             clearMapMarkers();
             
-            // Get current map bounds
+            // Get current map bounds with padding
             const bounds = map.getBounds();
             const zoom = map.getZoom();
             
-            // Determine clustering threshold based on zoom level
-            const clusterThreshold = zoom < 8 ? 1000 : zoom < 10 ? 500 : zoom < 12 ? 200 : 50;
+            // Add padding to viewport to show markers slightly outside visible area
+            const padding = 0.1; // 10% padding
+            const paddedBounds = L.latLngBounds(
+                [bounds.getSouth() - padding, bounds.getWest() - padding],
+                [bounds.getNorth() + padding, bounds.getEast() + padding]
+            );
             
-            // Filter companies within current viewport
+            // Determine clustering threshold based on zoom level (less aggressive)
+            const clusterThreshold = zoom < 6 ? 2000 : zoom < 8 ? 1000 : zoom < 10 ? 500 : zoom < 12 ? 200 : 100;
+            
+            // Filter companies within current viewport (with padding)
             const visibleCompanies = companies.filter(company => {
                 const lat = company.latitude;
                 const lng = company.longitude;
-                return bounds.contains([lat, lng]);
+                return paddedBounds.contains([lat, lng]);
             });
             
             console.log(`Showing ${visibleCompanies.length} companies in viewport (zoom: ${zoom})`);
