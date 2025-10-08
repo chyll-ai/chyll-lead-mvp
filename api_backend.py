@@ -49,7 +49,6 @@ class Company(BaseModel):
     qpv_label: Optional[str] = None
     zrr_classification: Optional[str] = None
     activite_principale_unite_legale: Optional[str] = None
-    libelle_activite_principale: Optional[str] = None
 
 class CompanyStats(BaseModel):
     total_companies: int
@@ -101,8 +100,7 @@ async def get_companies(
                 CASE WHEN in_qpv THEN TRUE ELSE FALSE END as in_qpv,
                 CASE WHEN is_zrr THEN TRUE ELSE FALSE END as is_zrr,
                 qpv_label, zrr_classification, 
-                activite_principale_unite_legale,
-                libelle_activite_principale
+                activite_principale_unite_legale
             FROM ess_companies_filtered_table
             WHERE latitude IS NOT NULL AND longitude IS NOT NULL
         """
@@ -163,8 +161,7 @@ async def get_companies(
                 tags=tags,
                 qpv_label=row[9],
                 zrr_classification=row[10],
-                activite_principale_unite_legale=row[11],
-                libelle_activite_principale=row[12]
+                activite_principale_unite_legale=row[11]
             ))
         
         cursor.close()
@@ -230,15 +227,15 @@ async def get_filter_options():
         """)
         communes = [row[0] for row in cursor.fetchall()]
         
-        # Get unique activity codes and labels
+        # Get unique activity codes
         cursor.execute("""
-            SELECT DISTINCT activite_principale_unite_legale, libelle_activite_principale
+            SELECT DISTINCT activite_principale_unite_legale
             FROM ess_companies_filtered_table 
             WHERE activite_principale_unite_legale IS NOT NULL 
-            ORDER BY libelle_activite_principale 
+            ORDER BY activite_principale_unite_legale 
             LIMIT 50
         """)
-        activities = [f"{row[0]} - {row[1]}" for row in cursor.fetchall()]
+        activities = [row[0] for row in cursor.fetchall()]
         
         # Get unique departments (first 2 digits of postal code)
         cursor.execute("""
