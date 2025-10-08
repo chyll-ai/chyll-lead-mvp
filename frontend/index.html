@@ -451,7 +451,7 @@
                 console.log('All ESS companies loaded:', companies.length);
                 
                 updateMap();
-                document.getElementById('loading-status').textContent = `Écosystème ESS complet (${companies.length.toLocaleString()} entreprises)`;
+                document.getElementById('loading-status').textContent = 'Chargement';
                 
             } catch (error) {
                 console.error('Error loading companies:', error);
@@ -467,7 +467,7 @@
             if (!searchTerm.trim()) {
                 // Restore all companies if search is cleared
                 companies = [...allCompanies];
-                document.getElementById('loading-status').textContent = `Écosystème complet (${companies.length.toLocaleString()} entreprises)`;
+                document.getElementById('loading-status').textContent = 'Chargement';
                 updateMap();
                 return;
             }
@@ -519,7 +519,7 @@
             if (!postalCode.trim()) {
                 // Restore all companies if search is cleared
                 companies = [...allCompanies];
-                document.getElementById('loading-status').textContent = `Écosystème complet (${companies.length.toLocaleString()} entreprises)`;
+                document.getElementById('loading-status').textContent = 'Chargement';
                 updateMap();
                 return;
             }
@@ -569,7 +569,7 @@
             if (!activityCode.trim()) {
                 // Restore all companies if search is cleared
                 companies = [...allCompanies];
-                document.getElementById('loading-status').textContent = `Écosystème complet (${companies.length.toLocaleString()} entreprises)`;
+                document.getElementById('loading-status').textContent = 'Chargement';
                 updateMap();
                 return;
             }
@@ -681,7 +681,7 @@
             
             // Restore all companies without filters
             companies = [...allCompanies];
-            document.getElementById('loading-status').textContent = `Écosystème complet (${companies.length.toLocaleString()} entreprises)`;
+            document.getElementById('loading-status').textContent = 'Chargement';
             updateMap();
             
             // Update filter checkboxes
