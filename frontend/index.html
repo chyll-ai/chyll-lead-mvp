@@ -249,6 +249,43 @@
             font-style: italic;
         }
         
+        /* Cluster marker styles */
+        .cluster-marker {
+            background: #3b82f6;
+            border: 2px solid white;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 12px;
+        }
+        
+        .cluster-content {
+            text-align: center;
+            line-height: 1;
+        }
+        
+        .cluster-companies {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .cluster-company {
+            padding: 2px 0;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 0.9rem;
+        }
+        
+        .cluster-more {
+            padding: 4px 0;
+            font-style: italic;
+            color: #6b7280;
+            font-size: 0.8rem;
+        }
+        
     </style>
 </head>
 <body>
@@ -318,6 +355,18 @@
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(map);
+            
+            // Add event listeners for viewport-based rendering
+            let updateTimeout;
+            map.on('moveend zoomend', function() {
+                // Debounce updates to avoid too frequent re-rendering
+                clearTimeout(updateTimeout);
+                updateTimeout = setTimeout(() => {
+                    if (companies.length > 0) {
+                        updateMap();
+                    }
+                }, 100);
+            });
             
             console.log('Map initialized - centered on Lille');
             hideLoading();
@@ -913,17 +962,59 @@
             }
         }
         
-        // Update map with current companies
+        // Update map with current companies - VIEWPORT-BASED RENDERING WITH CLUSTERING
         function updateMap() {
             console.log('Updating map with', companies.length, 'companies');
             
             // Clear existing markers
             clearMapMarkers();
             
-            // Add all markers (no limit - show complete ESS ecosystem)
-            console.log(`Showing all ${companies.length} companies`);
+            // Get current map bounds
+            const bounds = map.getBounds();
+            const zoom = map.getZoom();
             
-            companies.forEach((company, index) => {
+            // Determine clustering threshold based on zoom level
+            const clusterThreshold = zoom < 8 ? 1000 : zoom < 10 ? 500 : zoom < 12 ? 200 : 50;
+            
+            // Filter companies within current viewport
+            const visibleCompanies = companies.filter(company => {
+                const lat = company.latitude;
+                const lng = company.longitude;
+                return bounds.contains([lat, lng]);
+            });
+            
+            console.log(`Showing ${visibleCompanies.length} companies in viewport (zoom: ${zoom})`);
+            
+            // If too many markers, use clustering
+            if (visibleCompanies.length > clusterThreshold) {
+                createClusteredMarkers(visibleCompanies, bounds, zoom);
+            } else {
+                createIndividualMarkers(visibleCompanies);
+            }
+            
+            // Only fit bounds if we haven't manually centered the map
+            if (companies.length > 0 && window.markers && window.markers.length > 0 && !mapManuallyCentered) {
+                const group = new L.featureGroup(window.markers);
+                const markerBounds = group.getBounds();
+                
+                // Only fit bounds if the bounds are reasonable (not too spread out)
+                if (markerBounds.isValid() && markerBounds.getNorthEast().distanceTo(markerBounds.getSouthWest()) < 100000) {
+                    map.fitBounds(markerBounds.pad(0.01), { 
+                        maxZoom: 16,  // Allow closer zoom for city focus
+                        padding: [10, 10]  // Minimal padding for tight focus
+                    });
+                }
+            }
+            
+            // Reset the manual centering flag after updating
+            mapManuallyCentered = false;
+            
+            console.log('Map updated with', window.markers.length, 'markers');
+        }
+        
+        // Create individual markers for detailed view
+        function createIndividualMarkers(companiesToShow) {
+            companiesToShow.forEach((company, index) => {
                 const icon = createCustomIcon(company);
                 const marker = L.marker([company.latitude, company.longitude], { icon }).addTo(map);
                 
@@ -942,25 +1033,61 @@
                 if (!window.markers) window.markers = [];
                 window.markers.push(marker);
             });
+        }
+        
+        // Create clustered markers for performance
+        function createClusteredMarkers(companiesToShow, bounds, zoom) {
+            const gridSize = zoom < 8 ? 0.5 : zoom < 10 ? 0.2 : zoom < 12 ? 0.1 : 0.05;
+            const clusters = new Map();
             
-            // Only fit bounds if we haven't manually centered the map
-            if (companies.length > 0 && window.markers && window.markers.length > 0 && !mapManuallyCentered) {
-                const group = new L.featureGroup(window.markers);
-                const bounds = group.getBounds();
+            // Group companies into clusters
+            companiesToShow.forEach(company => {
+                const clusterKey = `${Math.floor(company.latitude / gridSize)}_${Math.floor(company.longitude / gridSize)}`;
                 
-                // Only fit bounds if the bounds are reasonable (not too spread out)
-                if (bounds.isValid() && bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 100000) {
-                    map.fitBounds(bounds.pad(0.01), { 
-                        maxZoom: 16,  // Allow closer zoom for city focus
-                        padding: [10, 10]  // Minimal padding for tight focus
-                    });
+                if (!clusters.has(clusterKey)) {
+                    clusters.set(clusterKey, []);
                 }
-            }
+                clusters.get(clusterKey).push(company);
+            });
             
-            // Reset the manual centering flag after updating
-            mapManuallyCentered = false;
-            
-            console.log('Map updated with', currentMarkers.length, 'markers');
+            // Create cluster markers
+            clusters.forEach((clusterCompanies, key) => {
+                if (clusterCompanies.length === 1) {
+                    // Single company - show individual marker
+                    createIndividualMarkers(clusterCompanies);
+                } else {
+                    // Multiple companies - show cluster marker
+                    const avgLat = clusterCompanies.reduce((sum, c) => sum + c.latitude, 0) / clusterCompanies.length;
+                    const avgLng = clusterCompanies.reduce((sum, c) => sum + c.longitude, 0) / clusterCompanies.length;
+                    
+                    const clusterIcon = L.divIcon({
+                        className: 'cluster-marker',
+                        html: `<div class="cluster-content">${clusterCompanies.length}</div>`,
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    });
+                    
+                    const clusterMarker = L.marker([avgLat, avgLng], { icon: clusterIcon }).addTo(map);
+                    
+                    // Create popup with all companies in cluster
+                    const popupContent = `
+                        <div class="popup-content">
+                            <div class="popup-title">${clusterCompanies.length} entreprises</div>
+                            <div class="popup-info">📍 ${clusterCompanies[0].libelle_commune || 'Zone'}</div>
+                            <div class="cluster-companies">
+                                ${clusterCompanies.slice(0, 5).map(company => 
+                                    `<div class="cluster-company">${company.denomination_unite_legale || 'Nom non disponible'}</div>`
+                                ).join('')}
+                                ${clusterCompanies.length > 5 ? `<div class="cluster-more">... et ${clusterCompanies.length - 5} autres</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                    
+                    clusterMarker.bindPopup(popupContent);
+                    if (!window.markers) window.markers = [];
+                    window.markers.push(clusterMarker);
+                }
+            });
         }
         
         // Create custom icon
