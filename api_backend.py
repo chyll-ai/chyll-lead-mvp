@@ -163,6 +163,97 @@ async def get_companies(
         logger.error(f"Error fetching companies: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/companies/region")
+async def get_companies_by_region(
+    region: str = Query("mayotte", description="Region to load (mayotte, paris, france)"),
+    limit: int = Query(200, description="Maximum number of companies to return")
+):
+    """Get ESS companies by region for smart initial loading"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Define region-specific queries
+        if region.lower() == "mayotte":
+            # Mayotte coordinates and postal codes
+            query = """
+                SELECT 
+                    siren, siret, denomination_unite_legale, libelle_commune, code_postal,
+                    latitude, longitude, in_qpv, is_zrr, qpv_label, zrr_classification, 
+                    activite_principale_unite_legale
+                FROM ess_companies_filtered_table
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                AND (code_postal LIKE '976%' OR libelle_commune ILIKE '%mayotte%')
+                ORDER BY denomination_unite_legale
+                LIMIT %s
+            """
+        elif region.lower() == "paris":
+            # Paris region (75 + surrounding areas)
+            query = """
+                SELECT 
+                    siren, siret, denomination_unite_legale, libelle_commune, code_postal,
+                    latitude, longitude, in_qpv, is_zrr, qpv_label, zrr_classification, 
+                    activite_principale_unite_legale
+                FROM ess_companies_filtered_table
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                AND (code_postal LIKE '75%' OR libelle_commune ILIKE '%paris%')
+                ORDER BY denomination_unite_legale
+                LIMIT %s
+            """
+        else:
+            # Default to a sample from France
+            query = """
+                SELECT 
+                    siren, siret, denomination_unite_legale, libelle_commune, code_postal,
+                    latitude, longitude, in_qpv, is_zrr, qpv_label, zrr_classification, 
+                    activite_principale_unite_legale
+                FROM ess_companies_filtered_table
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                ORDER BY denomination_unite_legale
+                LIMIT %s
+            """
+        
+        cursor.execute(query, (limit,))
+        results = cursor.fetchall()
+        
+        companies = []
+        for row in results:
+            tags = ['ESS']
+            
+            # Add QPV and ZRR tags if applicable
+            if row[7]:  # in_qpv
+                tags.append('QPV')
+            if row[8]:  # is_zrr
+                tags.append('ZRR')
+            
+            companies.append(Company(
+                siren=row[0],
+                siret=row[1],
+                denomination_unite_legale=row[2],
+                libelle_commune=row[3],
+                code_postal=row[4],
+                latitude=float(row[5]),
+                longitude=float(row[6]),
+                tags=tags,
+                qpv_label=row[9],
+                zrr_classification=row[10],
+                activite_principale_unite_legale=row[11]
+            ))
+        
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"Returned {len(companies)} ESS companies from {region}")
+        return {
+            "companies": companies,
+            "region": region,
+            "total": len(companies)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching companies by region: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/filter")
 async def filter_companies(
     qpv: bool = Query(False, description="Filter by QPV companies only"),
