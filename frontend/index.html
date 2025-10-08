@@ -295,7 +295,8 @@
     <script>
         const API_URL = 'https://chyll-lead-mvp-production.up.railway.app';
         let map;
-        let companies = [];
+        let companies = [];  // Currently displayed companies
+        let allCompanies = [];  // All loaded companies (persistent)
         let currentMarkers = [];
         let activeFilters = { qpv: false, zrr: false };
         let currentCity = 'LILLE';  // Track current city context
@@ -385,6 +386,9 @@
                     !company.tags || !company.tags.includes('ZRR')
                 );
                 
+                // Store in allCompanies for persistence
+                allCompanies = [...companies];
+                
                 console.log('All ESS companies loaded:', companies.length);
                 
                 updateMap();
@@ -402,8 +406,10 @@
         async function searchCompanies() {
             const searchTerm = document.getElementById('search-input').value;
             if (!searchTerm.trim()) {
-                // Show all companies if search is cleared
-                loadCompanies();
+                // Restore all companies if search is cleared
+                companies = [...allCompanies];
+                document.getElementById('loading-status').textContent = `Écosystème complet (${companies.length.toLocaleString()} entreprises)`;
+                updateMap();
                 return;
             }
             
@@ -414,7 +420,7 @@
             
             try {
                 // Filter from already loaded companies
-                const filteredCompanies = companies.filter(company => 
+                const filteredCompanies = allCompanies.filter(company => 
                     company.libelle_commune && 
                     company.libelle_commune.toUpperCase().includes(searchTerm.toUpperCase())
                 );
@@ -452,8 +458,10 @@
         async function searchByPostal() {
             const postalCode = document.getElementById('postal-input').value;
             if (!postalCode.trim()) {
-                // Show all companies if search is cleared
-                loadCompanies();
+                // Restore all companies if search is cleared
+                companies = [...allCompanies];
+                document.getElementById('loading-status').textContent = `Écosystème complet (${companies.length.toLocaleString()} entreprises)`;
+                updateMap();
                 return;
             }
             
@@ -462,7 +470,7 @@
             
             try {
                 // Filter from already loaded companies
-                const filteredCompanies = companies.filter(company => 
+                const filteredCompanies = allCompanies.filter(company => 
                     company.code_postal && 
                     company.code_postal.startsWith(postalPrefix)
                 );
@@ -500,8 +508,10 @@
         async function searchByActivity() {
             const activityCode = document.getElementById('activity-input').value;
             if (!activityCode.trim()) {
-                // Show all companies if search is cleared
-                loadCompanies();
+                // Restore all companies if search is cleared
+                companies = [...allCompanies];
+                document.getElementById('loading-status').textContent = `Écosystème complet (${companies.length.toLocaleString()} entreprises)`;
+                updateMap();
                 return;
             }
             
@@ -509,7 +519,7 @@
             
             try {
                 // Filter from already loaded companies
-                const filteredCompanies = companies.filter(company => 
+                const filteredCompanies = allCompanies.filter(company => 
                     company.activite_principale_unite_legale && 
                     company.activite_principale_unite_legale.includes(activityCode)
                 );
@@ -610,8 +620,18 @@
                 btn.classList.remove('active');
             });
             
-            // Reload all companies without filters
-            loadCompanies();
+            // Restore all companies without filters
+            companies = [...allCompanies];
+            document.getElementById('loading-status').textContent = `Écosystème complet (${companies.length.toLocaleString()} entreprises)`;
+            updateMap();
+            
+            // Update filter checkboxes
+            document.getElementById('qpv-filter').checked = false;
+            document.getElementById('zrr-filter').checked = false;
+            
+            // Hide QPV and ZRR markers
+            toggleQPVFilter();
+            toggleZRRFilter();
         }
         
         // Center map on specific city coordinates with tight zoom
