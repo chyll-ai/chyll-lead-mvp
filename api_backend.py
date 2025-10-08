@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Tabula Virtutis - ESS Companies Map API
-Serves data from ess_companies_filtered_table with comprehensive filtering
+Simplified API serving only ess_companies_filtered_table
 """
 
 from fastapi import FastAPI, HTTPException, Query
@@ -52,17 +52,9 @@ class Company(BaseModel):
 
 class CompanyStats(BaseModel):
     total_companies: int
-    ess_companies: int
     qpv_companies: int
     zrr_companies: int
-    companies_with_multiple_tags: int
     unique_communes: int
-    unique_activities: int
-
-class FilterOptions(BaseModel):
-    communes: List[str]
-    activities: List[str]
-    departments: List[str]
 
 def get_db_connection():
     """Get database connection"""
@@ -92,14 +84,11 @@ async def get_companies(
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Build the base query
-        base_query = """
+        # Simple base query - no complex joins or unions
+        query = """
             SELECT 
                 siren, siret, denomination_unite_legale, libelle_commune, code_postal,
-                latitude, longitude, 
-                CASE WHEN in_qpv THEN TRUE ELSE FALSE END as in_qpv,
-                CASE WHEN is_zrr THEN TRUE ELSE FALSE END as is_zrr,
-                qpv_label, zrr_classification, 
+                latitude, longitude, in_qpv, is_zrr, qpv_label, zrr_classification, 
                 activite_principale_unite_legale
             FROM ess_companies_filtered_table
             WHERE latitude IS NOT NULL AND longitude IS NOT NULL
@@ -133,11 +122,11 @@ async def get_companies(
         
         # Combine query
         if filters:
-            base_query += " AND " + " AND ".join(filters)
+            query += " AND " + " AND ".join(filters)
         
-        base_query += f" ORDER BY denomination_unite_legale LIMIT {limit} OFFSET {offset}"
+        query += f" ORDER BY denomination_unite_legale LIMIT {limit} OFFSET {offset}"
         
-        cursor.execute(base_query, params)
+        cursor.execute(query, params)
         results = cursor.fetchall()
         
         companies = []
@@ -174,7 +163,6 @@ async def get_companies(
         logger.error(f"Error fetching companies: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/filter")
 async def filter_companies(
     qpv: bool = Query(False, description="Filter by QPV companies only"),
@@ -210,58 +198,9 @@ async def filter_companies(
         logger.error(f"Error in filter endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/filter-options", response_model=FilterOptions)
-async def get_filter_options():
-    """Get available filter options for the frontend"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get unique communes
-        cursor.execute("""
-            SELECT DISTINCT libelle_commune 
-            FROM ess_companies_filtered_table 
-            WHERE libelle_commune IS NOT NULL 
-            ORDER BY libelle_commune 
-            LIMIT 100
-        """)
-        communes = [row[0] for row in cursor.fetchall()]
-        
-        # Get unique activity codes
-        cursor.execute("""
-            SELECT DISTINCT activite_principale_unite_legale
-            FROM ess_companies_filtered_table 
-            WHERE activite_principale_unite_legale IS NOT NULL 
-            ORDER BY activite_principale_unite_legale 
-            LIMIT 50
-        """)
-        activities = [row[0] for row in cursor.fetchall()]
-        
-        # Get unique departments (first 2 digits of postal code)
-        cursor.execute("""
-            SELECT DISTINCT LEFT(code_postal, 2) as dept
-            FROM ess_companies_filtered_table 
-            WHERE code_postal IS NOT NULL AND LENGTH(code_postal) >= 2
-            ORDER BY dept
-        """)
-        departments = [row[0] for row in cursor.fetchall()]
-        
-        cursor.close()
-        conn.close()
-        
-        return FilterOptions(
-            communes=communes,
-            activities=activities,
-            departments=departments
-        )
-        
-    except Exception as e:
-        logger.error(f"Error fetching filter options: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/stats", response_model=CompanyStats)
 async def get_stats():
-    """Get ESS company statistics"""
+    """Get simplified ESS company statistics"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -278,14 +217,6 @@ async def get_stats():
         cursor.execute("SELECT COUNT(*) FROM ess_companies_filtered_table WHERE is_zrr = TRUE AND latitude IS NOT NULL")
         zrr_count = cursor.fetchone()[0]
         
-        # Companies with multiple tags (QPV + ZRR)
-        cursor.execute("""
-            SELECT COUNT(*) FROM ess_companies_filtered_table 
-            WHERE latitude IS NOT NULL 
-            AND (in_qpv = TRUE AND is_zrr = TRUE)
-        """)
-        multi_tag_count = cursor.fetchone()[0]
-        
         # Unique communes count
         cursor.execute("""
             SELECT COUNT(DISTINCT libelle_commune) 
@@ -294,25 +225,14 @@ async def get_stats():
         """)
         unique_communes = cursor.fetchone()[0]
         
-        # Unique activities count
-        cursor.execute("""
-            SELECT COUNT(DISTINCT activite_principale_unite_legale) 
-            FROM ess_companies_filtered_table 
-            WHERE activite_principale_unite_legale IS NOT NULL AND latitude IS NOT NULL
-        """)
-        unique_activities = cursor.fetchone()[0]
-        
         cursor.close()
         conn.close()
         
         return CompanyStats(
             total_companies=total_count,
-            ess_companies=total_count,  # All companies are ESS
             qpv_companies=qpv_count,
             zrr_companies=zrr_count,
-            companies_with_multiple_tags=multi_tag_count,
-            unique_communes=unique_communes,
-            unique_activities=unique_activities
+            unique_communes=unique_communes
         )
         
     except Exception as e:
