@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESS Ecosystem Map</title>
+    <title>ImpactMap</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * {
@@ -180,34 +180,57 @@
         .badge.qpv { background: #f59e0b; }
         .badge.zrr { background: #ef4444; }
         
-        .legend {
-            position: absolute;
-            bottom: 1rem;
-            right: 1rem;
-            background: white;
-            padding: 1rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            z-index: 1000;
+        .qpv-marker {
+            background: none !important;
+            border: none !important;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
         }
         
-        .legend-item {
+        .zrr-marker {
+            background: none !important;
+            border: none !important;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        .filter-checkbox {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            margin-bottom: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+            font-weight: 500;
         }
         
-        .legend-marker {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
+        .filter-checkbox:hover {
+            border-color: #3b82f6;
+            background: #f8fafc;
         }
         
-        .legend-marker.mission { background: #8b5cf6; }
-        .legend-marker.ess { background: #10b981; }
-        .legend-marker.qpv { background: #f59e0b; }
-        .legend-marker.zrr { background: #ef4444; }
+        .filter-checkbox input[type="checkbox"] {
+            margin: 0;
+            width: 16px;
+            height: 16px;
+        }
+        
+        .filter-checkbox .emoji {
+            font-size: 1.2rem;
+        }
+        
+        .filter-checkbox .label {
+            color: #374151;
+        }
+        
+        .filter-checkbox input[type="checkbox"]:checked + .emoji + .label {
+            color: #1f2937;
+            font-weight: 600;
+        }
         
         .load-more-btn {
             background: #3b82f6;
@@ -247,15 +270,21 @@
                 <input type="text" id="activity-input" placeholder="Code activité..." onkeyup="searchByActivity()">
             </div>
             <div class="filter-buttons">
-                <button class="filter-btn" data-filter="qpv">
-                    🏙️ QPV Zones
-                </button>
-                <button class="filter-btn" data-filter="zrr">
-                    🌾 ZRR Zones
-                </button>
-                <button class="filter-btn" onclick="clearFilters()">
-                    🔄 Clear Filters
-                </button>
+                <label class="filter-checkbox">
+                    <input type="checkbox" id="ess-filter" checked onchange="toggleESSFilter()">
+                    <span class="emoji">🤝</span>
+                    <span class="label">ESS</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" id="qpv-filter" checked onchange="toggleQPVFilter()">
+                    <span class="emoji">🏘️</span>
+                    <span class="label">QPV</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" id="zrr-filter" checked onchange="toggleZRRFilter()">
+                    <span class="emoji">🌾</span>
+                    <span class="label">ZRR</span>
+                </label>
             </div>
         </div>
         
@@ -264,25 +293,6 @@
             <div class="loading" id="loading">
                 <div class="spinner"></div>
                 <p>Chargement de la carte...</p>
-            </div>
-        </div>
-        
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-marker mission"></div>
-                <span>Mission</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-marker ess"></div>
-                <span>ESS</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-marker qpv"></div>
-                <span>QPV</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-marker zrr"></div>
-                <span>ZRR</span>
             </div>
         </div>
     </div>
@@ -297,6 +307,13 @@
         let currentCity = 'LILLE';  // Track current city context
         let mapManuallyCentered = false;  // Track if map was manually centered
         
+        // Global variables for QPV and ZRR persistence
+        let qpvCompanies = [];  // Persistent QPV companies
+        let qpvMarkers = [];    // Persistent QPV markers
+        let zrrCompanies = [];   // Persistent ZRR companies
+        let zrrMarkers = [];    // Persistent ZRR markers
+        let essMarkers = [];    // ESS pagination markers
+        
         // Pagination variables
         let currentSearchType = null;  // 'postal', 'city', 'activity'
         let currentSearchTerm = null;
@@ -308,7 +325,7 @@
         function initMap() {
             console.log('Initializing map...');
             // Start centered on Lille, France
-            map = L.map('map').setView([50.6292, 3.0573], 11);
+            map = L.map('map').setView([50.6292, 3.0573], 13);
             
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -317,6 +334,8 @@
             console.log('Map initialized - centered on Lille');
             hideLoading();
             loadLilleCompanies();
+            loadQPVCompanies(); // Load persistent QPV companies
+            loadZRRCompanies(); // Load persistent ZRR companies
         }
         
         // Load Lille companies for initial view
@@ -401,7 +420,7 @@
             }
         }
         
-        // Search companies by city - IMPROVED PRECISION
+        // Search companies by city - IMPROVED PRECISION WITH PAGINATION
         async function searchCompanies() {
             const searchTerm = document.getElementById('search-input').value;
             if (!searchTerm.trim()) {
@@ -410,16 +429,23 @@
                 return;
             }
             
+            // Reset pagination for new search
+            currentSearchType = 'city';
+            currentSearchTerm = searchTerm.trim();
+            currentOffset = 0;
+            hasMoreData = false;
+            
             // Update current city context
             currentCity = searchTerm.toUpperCase();
             
             showLoading(`Recherche: "${searchTerm}"...`);
             
             try {
-                // Use exact match for better precision
+                // Use exact match for better precision with pagination
                 const params = new URLSearchParams({
                     commune: searchTerm,
-                    limit: 50000
+                    limit: 2000,  // Batch size for pagination
+                    offset: currentOffset
                 });
                 
                 // Add current filters
@@ -430,24 +456,31 @@
                     params.append('zrr', 'true');
                 }
                 
+                console.log('Searching city:', searchTerm, 'URL:', `${API_URL}/filter?${params}`);
+                
                 const response = await fetch(`${API_URL}/filter?${params}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('City search result:', data);
                 
                 companies = data.companies || [];
+                hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
                 
-                // Filter companies to only show those in the city (SMART FILTERING)
-                if (searchTerm.trim()) {
-                    companies = companies.filter(company => 
-                        company.libelle_commune && 
-                        company.libelle_commune.toUpperCase().startsWith(searchTerm.toUpperCase())
-                    );
-                }
+                // Show result count in status
+                const resultCount = companies.length;
+                document.getElementById('loading-status').textContent = `${currentCity} (${resultCount} résultats)`;
+                
+                // Show/hide Load More button
+                updateLoadMoreButton();
                 
                 // Center map on the searched city first
                 centerMapOnCity(searchTerm);
                 
                 updateMap();
-                document.getElementById('loading-status').textContent = currentCity;
                 
             } catch (error) {
                 console.error('Error searching companies:', error);
@@ -546,11 +579,18 @@
             showLoading(`Activité: "${activityCode}"...`);
             
             try {
-                const params = new URLSearchParams({
-                    activity_code: activityCode,
-                    commune: currentCity,  // Respect current city
-                    limit: 50000
-                });
+            // Reset pagination for new search
+            currentSearchType = 'activity';
+            currentSearchTerm = activityCode.trim();
+            currentOffset = 0;
+            hasMoreData = false;
+            
+            const params = new URLSearchParams({
+                activity_code: activityCode,
+                commune: currentCity,  // Respect current city
+                limit: 2000,  // Batch size for pagination
+                offset: currentOffset
+            });
                 
                 // Add current filters
                 if (activeFilters.qpv) {
@@ -560,10 +600,19 @@
                     params.append('zrr', 'true');
                 }
                 
+                console.log('Searching activity:', activityCode, 'URL:', `${API_URL}/filter?${params}`);
+                
                 const response = await fetch(`${API_URL}/filter?${params}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('Activity search result:', data);
                 
                 companies = data.companies || [];
+                hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
                 
                 // SMART FILTERING: Only show companies from current city
                 if (currentCity && currentCity !== 'LILLE') {
@@ -573,8 +622,14 @@
                     );
                 }
                 
+                // Show result count in status
+                const resultCount = companies.length;
+                document.getElementById('loading-status').textContent = `Activité ${activityCode} - ${currentCity} (${resultCount} résultats)`;
+                
+                // Show/hide Load More button
+                updateLoadMoreButton();
+                
                 updateMap();
-                document.getElementById('loading-status').textContent = `Activité ${activityCode}`;
                 
             } catch (error) {
                 console.error('Error searching by activity:', error);
@@ -640,18 +695,20 @@
                 const data = await response.json();
                 const newCompanies = data.companies || [];
                 
-                // Append new companies to existing ones
-                companies = companies.concat(newCompanies);
+                // REPLACE companies array with new batch (not append)
+                companies = newCompanies;
                 hasMoreData = newCompanies.length === 2000;
                 
-                // Update status
-                const totalCount = companies.length;
+                // Update status with current batch count
+                const batchCount = companies.length;
+                const totalLoaded = currentOffset + batchCount;
                 document.getElementById('loading-status').textContent = 
                     `${currentSearchType === 'postal' ? 'Code postal' : 
                       currentSearchType === 'city' ? currentSearchTerm : 
-                      'Activité'} ${currentSearchTerm} (${totalCount} résultats)`;
+                      'Activité'} ${currentSearchTerm} (${batchCount} résultats - page ${Math.floor(currentOffset / 2000) + 1})`;
                 
-                // Update map with new markers
+                // Clear existing markers and show new ones
+                clearMapMarkers();
                 updateMap();
                 
                 // Update Load More button
@@ -673,9 +730,65 @@
             
             if (hasMoreData && currentSearchType) {
                 loadMoreBtn.style.display = 'block';
+                loadMoreBtn.textContent = '📈 Charger plus';
                 loadMoreBtn.disabled = isLoadingMore;
             } else {
                 loadMoreBtn.style.display = 'none';
+            }
+        }
+        
+        // Toggle ESS filter visibility
+        function toggleESSFilter() {
+            const essFilter = document.getElementById('ess-filter').checked;
+            console.log('ESS filter:', essFilter);
+            
+            if (essFilter) {
+                // Show ESS markers
+                updateMap();
+            } else {
+                // Hide ESS markers
+                if (window.markers) {
+                    window.markers.forEach(marker => {
+                        map.removeLayer(marker);
+                    });
+                    window.markers = [];
+                }
+            }
+        }
+        
+        // Toggle QPV filter visibility
+        function toggleQPVFilter() {
+            const qpvFilter = document.getElementById('qpv-filter').checked;
+            console.log('QPV filter:', qpvFilter);
+            
+            if (qpvFilter) {
+                // Show QPV markers
+                qpvMarkers.forEach(marker => {
+                    marker.addTo(map);
+                });
+            } else {
+                // Hide QPV markers
+                qpvMarkers.forEach(marker => {
+                    map.removeLayer(marker);
+                });
+            }
+        }
+        
+        // Toggle ZRR filter visibility
+        function toggleZRRFilter() {
+            const zrrFilter = document.getElementById('zrr-filter').checked;
+            console.log('ZRR filter:', zrrFilter);
+            
+            if (zrrFilter) {
+                // Show ZRR markers
+                zrrMarkers.forEach(marker => {
+                    marker.addTo(map);
+                });
+            } else {
+                // Hide ZRR markers
+                zrrMarkers.forEach(marker => {
+                    map.removeLayer(marker);
+                });
             }
         }
         
@@ -721,7 +834,7 @@
             
             const coords = cityCoordinates[cityName.toUpperCase()];
             if (coords) {
-                map.setView(coords, 13);  // Higher zoom level for city focus
+                map.setView(coords, 15);  // Higher zoom level for city focus
                 mapManuallyCentered = true;  // Mark that we manually centered
             }
         }
@@ -779,7 +892,7 @@
             
             const coords = departmentCoordinates[departmentCode];
             if (coords) {
-                map.setView(coords, 10);  // Department-level zoom
+                map.setView(coords, 12);  // Department-level zoom
                 mapManuallyCentered = true;  // Mark that we manually centered
             }
         }
@@ -838,7 +951,7 @@
             
             const coords = postalCoordinates[postalPrefix];
             if (coords) {
-                map.setView(coords, 12);  // Postal code level zoom
+                map.setView(coords, 14);  // Postal code level zoom
                 mapManuallyCentered = true;
             } else {
                 // Fallback to department-level centering
@@ -847,13 +960,148 @@
             }
         }
         
+        // Load all QPV companies once and keep them persistent
+        async function loadQPVCompanies() {
+            if (qpvCompanies.length > 0) return; // Already loaded
+            
+            try {
+                console.log('Loading all QPV companies...');
+                const params = new URLSearchParams({
+                    qpv: 'true',
+                    limit: 10000  // Load all QPV companies
+                });
+                
+                const response = await fetch(`${API_URL}/filter?${params}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const data = await response.json();
+                qpvCompanies = data.companies || [];
+                
+                console.log(`Loaded ${qpvCompanies.length} QPV companies`);
+                
+                // Create persistent QPV markers
+                createQPVMarkers();
+                
+            } catch (error) {
+                console.error('Error loading QPV companies:', error);
+            }
+        }
+        
+        // Create persistent QPV markers
+        function createQPVMarkers() {
+            // Clear existing QPV markers
+            qpvMarkers.forEach(marker => map.removeLayer(marker));
+            qpvMarkers = [];
+            
+            qpvCompanies.forEach(company => {
+                if (company.latitude && company.longitude) {
+                    const marker = L.marker([company.latitude, company.longitude], {
+                        icon: L.divIcon({
+                            className: 'qpv-marker',
+                            html: '🏘️',
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        })
+                    });
+                    
+                    const popupContent = `
+                        <div class="popup-content">
+                            <h3>${company.denomination_unite_legale}</h3>
+                            <p><strong>QPV:</strong> ${company.qpv_label || 'Zone QPV'}</p>
+                            <p><strong>Commune:</strong> ${company.libelle_commune}</p>
+                            <p><strong>Code postal:</strong> ${company.code_postal}</p>
+                            <p><strong>Activité:</strong> ${company.activite_principale_unite_legale}</p>
+                        </div>
+                    `;
+                    
+                    marker.bindPopup(popupContent);
+                    marker.addTo(map);
+                    qpvMarkers.push(marker);
+                }
+            });
+            
+            console.log(`Created ${qpvMarkers.length} QPV markers`);
+        }
+        
+        // Load all ZRR companies once and keep them persistent
+        async function loadZRRCompanies() {
+            if (zrrCompanies.length > 0) return; // Already loaded
+            
+            try {
+                console.log('Loading all ZRR companies...');
+                const params = new URLSearchParams({
+                    zrr: 'true',
+                    limit: 10000  // Load all ZRR companies
+                });
+                
+                const response = await fetch(`${API_URL}/filter?${params}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const data = await response.json();
+                zrrCompanies = data.companies || [];
+                
+                console.log(`Loaded ${zrrCompanies.length} ZRR companies`);
+                
+                // Create persistent ZRR markers
+                createZRRMarkers();
+                
+            } catch (error) {
+                console.error('Error loading ZRR companies:', error);
+            }
+        }
+        
+        // Create persistent ZRR markers
+        function createZRRMarkers() {
+            // Clear existing ZRR markers
+            zrrMarkers.forEach(marker => map.removeLayer(marker));
+            zrrMarkers = [];
+            
+            zrrCompanies.forEach(company => {
+                if (company.latitude && company.longitude) {
+                    const marker = L.marker([company.latitude, company.longitude], {
+                        icon: L.divIcon({
+                            className: 'zrr-marker',
+                            html: '🌾',
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        })
+                    });
+                    
+                    const popupContent = `
+                        <div class="popup-content">
+                            <h3>${company.denomination_unite_legale}</h3>
+                            <p><strong>ZRR:</strong> ${company.zrr_classification || 'Zone ZRR'}</p>
+                            <p><strong>Commune:</strong> ${company.libelle_commune}</p>
+                            <p><strong>Code postal:</strong> ${company.code_postal}</p>
+                            <p><strong>Activité:</strong> ${company.activite_principale_unite_legale}</p>
+                        </div>
+                    `;
+                    
+                    marker.bindPopup(popupContent);
+                    marker.addTo(map);
+                    zrrMarkers.push(marker);
+                }
+            });
+            
+            console.log(`Created ${zrrMarkers.length} ZRR markers`);
+        }
+        
+        // Clear ESS map markers (keep QPV and ZRR markers persistent)
+        function clearMapMarkers() {
+            if (window.markers) {
+                window.markers.forEach(marker => {
+                    map.removeLayer(marker);
+                });
+                window.markers = [];
+            }
+        }
+        
         // Update map with current companies
         function updateMap() {
             console.log('Updating map with', companies.length, 'companies');
             
             // Clear existing markers
-            currentMarkers.forEach(marker => map.removeLayer(marker));
-            currentMarkers = [];
+            clearMapMarkers();
             
             // Add markers (limit for performance)
             const maxMarkers = 1000;
@@ -879,12 +1127,13 @@
                 `;
                 
                 marker.bindPopup(popupContent);
-                currentMarkers.push(marker);
+                if (!window.markers) window.markers = [];
+                window.markers.push(marker);
             });
             
             // Only fit bounds if we haven't manually centered the map
-            if (companies.length > 0 && currentMarkers.length > 0 && !mapManuallyCentered) {
-                const group = new L.featureGroup(currentMarkers);
+            if (companies.length > 0 && window.markers && window.markers.length > 0 && !mapManuallyCentered) {
+                const group = new L.featureGroup(window.markers);
                 const bounds = group.getBounds();
                 
                 // Only fit bounds if the bounds are reasonable (not too spread out)

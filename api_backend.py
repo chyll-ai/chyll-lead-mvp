@@ -68,6 +68,61 @@ async def root():
 async def test():
     return {"status": "ok", "message": "Tabula Virtutis API is working"}
 
+@app.post("/fix-saint-denis-zrr")
+async def fix_saint_denis_zrr():
+    """Fix ZRR misclassification for companies in Seine-Saint-Denis (93xxx)"""
+    try:
+        cursor = conn.cursor()
+        
+        # Check current state
+        cursor.execute("""
+            SELECT COUNT(*) as total_companies,
+                   COUNT(CASE WHEN is_zrr = true THEN 1 END) as zrr_classified
+            FROM ess_companies_filtered_table 
+            WHERE code_postal LIKE '93%'
+        """)
+        
+        before_result = cursor.fetchone()
+        
+        # Update ZRR classification for Seine-Saint-Denis companies
+        cursor.execute("""
+            UPDATE ess_companies_filtered_table 
+            SET is_zrr = false, 
+                zrr_classification = NULL
+            WHERE code_postal LIKE '93%' 
+            AND is_zrr = true
+        """)
+        
+        updated_count = cursor.rowcount
+        conn.commit()
+        
+        # Check after state
+        cursor.execute("""
+            SELECT COUNT(*) as remaining_zrr_in_93
+            FROM ess_companies_filtered_table 
+            WHERE code_postal LIKE '93%' AND is_zrr = true
+        """)
+        
+        after_result = cursor.fetchone()
+        
+        cursor.close()
+        
+        return {
+            "message": "Saint-Denis ZRR classification fixed",
+            "before": {
+                "total_companies": before_result[0],
+                "zrr_classified": before_result[1]
+            },
+            "updated_count": updated_count,
+            "after": {
+                "remaining_zrr": after_result[0]
+            },
+            "success": True
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "success": False}
+
 @app.get("/companies", response_model=List[Company])
 async def get_companies(
     qpv: bool = Query(False, description="Filter by QPV companies only"),
