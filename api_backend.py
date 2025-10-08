@@ -213,7 +213,7 @@ async def get_companies_by_region(
                 LIMIT %s
             """
         
-        cursor.execute(query, (limit,))
+        cursor.execute(query, [limit])
         results = cursor.fetchall()
         
         companies = []
