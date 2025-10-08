@@ -204,6 +204,37 @@ async def get_companies_batch(
         limit=batch_size, offset=offset
     )
 
+@app.get("/filter")
+async def filter_companies(
+    ess: bool = Query(True, description="Include ESS companies"),
+    mission: bool = Query(True, description="Include Mission companies"),
+    qpv: bool = Query(False, description="Filter by QPV companies"),
+    zrr: bool = Query(False, description="Filter by ZRR companies"),
+    limit: int = Query(1000, description="Maximum number of companies to return"),
+    offset: int = Query(0, description="Number of companies to skip")
+):
+    """Filter companies - frontend-compatible endpoint"""
+    try:
+        companies = await get_companies(
+            ess=ess, mission=mission, qpv=qpv, zrr=zrr,
+            limit=limit, offset=offset
+        )
+        
+        return {
+            "companies": companies,
+            "total": len(companies),
+            "filters_applied": {
+                "ess": ess,
+                "mission": mission,
+                "qpv": qpv,
+                "zrr": zrr
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in filter endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/stats", response_model=CompanyStats)
 async def get_stats():
     """Get company statistics"""
