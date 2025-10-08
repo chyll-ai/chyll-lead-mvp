@@ -129,7 +129,7 @@ async def get_companies(
         if filters:
             query += " AND " + " AND ".join(filters)
         
-        query += f" ORDER BY denomination_unite_legale LIMIT {limit} OFFSET {offset}"
+        query += f" ORDER BY denomination_unite_legale, siren LIMIT {limit} OFFSET {offset}"
         
         cursor.execute(query, params)
         results = cursor.fetchall()

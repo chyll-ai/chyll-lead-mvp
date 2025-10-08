@@ -208,12 +208,36 @@
         .legend-marker.ess { background: #10b981; }
         .legend-marker.qpv { background: #f59e0b; }
         .legend-marker.zrr { background: #ef4444; }
+        
+        .load-more-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .load-more-btn:hover {
+            background: #2563eb;
+        }
+        
+        .load-more-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
     <div class="app">
         <div class="header">
             <div class="loading-status" id="loading-status">Chargement...</div>
+            <button id="load-more-btn" class="load-more-btn" onclick="loadMoreCompanies()" style="display: none;">
+                📈 Charger plus
+            </button>
         </div>
         
         <div class="filters">
@@ -272,6 +296,13 @@
         let activeFilters = { qpv: false, zrr: false };
         let currentCity = 'LILLE';  // Track current city context
         let mapManuallyCentered = false;  // Track if map was manually centered
+        
+        // Pagination variables
+        let currentSearchType = null;  // 'postal', 'city', 'activity'
+        let currentSearchTerm = null;
+        let currentOffset = 0;
+        let hasMoreData = false;
+        let isLoadingMore = false;
         
         // Initialize map
         function initMap() {
@@ -435,6 +466,12 @@
                 return;
             }
             
+            // Reset pagination for new search
+            currentSearchType = 'postal';
+            currentSearchTerm = postalCode.trim();
+            currentOffset = 0;
+            hasMoreData = false;
+            
             // Use the full postal code prefix for more precise matching
             const postalPrefix = postalCode.trim();
             
@@ -443,7 +480,8 @@
             try {
                 const params = new URLSearchParams({
                     code_postal: postalPrefix,
-                    limit: 50000
+                    limit: 2000,  // Batch size
+                    offset: currentOffset
                 });
                 
                 // Add current filters
@@ -454,16 +492,39 @@
                     params.append('zrr', 'true');
                 }
                 
-                const response = await fetch(`${API_URL}/filter?${params}`);
+                console.log('Searching postal code:', postalPrefix, 'URL:', `${API_URL}/filter?${params}`);
+                
+                // Add timeout to prevent hanging
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                
+                const response = await fetch(`${API_URL}/filter?${params}`, {
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('Postal code search result:', data);
                 
                 companies = data.companies || [];
+                hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
+                
+                // Show result count in status
+                const resultCount = companies.length;
+                document.getElementById('loading-status').textContent = `Code postal ${postalPrefix} (${resultCount} résultats)`;
+                
+                // Show/hide Load More button
+                updateLoadMoreButton();
                 
                 // Center map on postal code area (approximate center)
                 centerMapOnPostalCode(postalPrefix);
                 
                 updateMap();
-                document.getElementById('loading-status').textContent = `Code postal ${postalPrefix}`;
                 
             } catch (error) {
                 console.error('Error searching by postal code:', error);
@@ -523,10 +584,112 @@
             }
         }
         
+        // Load more companies for current search
+        async function loadMoreCompanies() {
+            if (isLoadingMore || !hasMoreData || !currentSearchType) {
+                return;
+            }
+            
+            isLoadingMore = true;
+            currentOffset += 2000;
+            
+            const loadMoreBtn = document.getElementById('load-more-btn');
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.textContent = '⏳ Chargement...';
+            
+            try {
+                let params;
+                
+                if (currentSearchType === 'postal') {
+                    params = new URLSearchParams({
+                        code_postal: currentSearchTerm,
+                        limit: 2000,
+                        offset: currentOffset
+                    });
+                } else if (currentSearchType === 'city') {
+                    params = new URLSearchParams({
+                        commune: currentSearchTerm,
+                        limit: 2000,
+                        offset: currentOffset
+                    });
+                } else if (currentSearchType === 'activity') {
+                    params = new URLSearchParams({
+                        activity_code: currentSearchTerm,
+                        commune: currentCity,
+                        limit: 2000,
+                        offset: currentOffset
+                    });
+                }
+                
+                // Add current filters
+                if (activeFilters.qpv) {
+                    params.append('qpv', 'true');
+                }
+                if (activeFilters.zrr) {
+                    params.append('zrr', 'true');
+                }
+                
+                console.log('Loading more companies:', params.toString());
+                
+                const response = await fetch(`${API_URL}/filter?${params}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const newCompanies = data.companies || [];
+                
+                // Append new companies to existing ones
+                companies = companies.concat(newCompanies);
+                hasMoreData = newCompanies.length === 2000;
+                
+                // Update status
+                const totalCount = companies.length;
+                document.getElementById('loading-status').textContent = 
+                    `${currentSearchType === 'postal' ? 'Code postal' : 
+                      currentSearchType === 'city' ? currentSearchTerm : 
+                      'Activité'} ${currentSearchTerm} (${totalCount} résultats)`;
+                
+                // Update map with new markers
+                updateMap();
+                
+                // Update Load More button
+                updateLoadMoreButton();
+                
+            } catch (error) {
+                console.error('Error loading more companies:', error);
+                document.getElementById('loading-status').textContent = `Erreur: ${error.message}`;
+            } finally {
+                isLoadingMore = false;
+                loadMoreBtn.disabled = false;
+                loadMoreBtn.textContent = '📈 Charger plus';
+            }
+        }
+        
+        // Update Load More button visibility and state
+        function updateLoadMoreButton() {
+            const loadMoreBtn = document.getElementById('load-more-btn');
+            
+            if (hasMoreData && currentSearchType) {
+                loadMoreBtn.style.display = 'block';
+                loadMoreBtn.disabled = isLoadingMore;
+            } else {
+                loadMoreBtn.style.display = 'none';
+            }
+        }
+        
         // Clear all filters and show city companies
         function clearFilters() {
             activeFilters.qpv = false;
             activeFilters.zrr = false;
+            
+            // Reset pagination
+            currentSearchType = null;
+            currentSearchTerm = null;
+            currentOffset = 0;
+            hasMoreData = false;
+            updateLoadMoreButton();
             
             // Update button states
             document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -651,6 +814,16 @@
                 '757': [48.8566, 2.3522],   // Paris
                 '758': [48.8566, 2.3522],   // Paris
                 '759': [48.8566, 2.3522],   // Paris
+                '920': [48.8444, 2.2067],   // Hauts-de-Seine (Nanterre)
+                '921': [48.8444, 2.2067],   // Hauts-de-Seine
+                '922': [48.8444, 2.2067],   // Hauts-de-Seine
+                '923': [48.8444, 2.2067],   // Hauts-de-Seine
+                '924': [48.8444, 2.2067],   // Hauts-de-Seine
+                '925': [48.8444, 2.2067],   // Hauts-de-Seine
+                '926': [48.8444, 2.2067],   // Hauts-de-Seine
+                '927': [48.8444, 2.2067],   // Hauts-de-Seine
+                '928': [48.8444, 2.2067],   // Hauts-de-Seine
+                '929': [48.8444, 2.2067],   // Hauts-de-Seine
                 '590': [50.6292, 3.0573],   // Lille area
                 '591': [50.6292, 3.0573],   // Lille area
                 '592': [50.6292, 3.0573],   // Lille area
@@ -682,8 +855,15 @@
             currentMarkers.forEach(marker => map.removeLayer(marker));
             currentMarkers = [];
             
-            // Add markers
-            companies.forEach((company, index) => {
+            // Add markers (limit for performance)
+            const maxMarkers = 1000;
+            const companiesToShow = companies.slice(0, maxMarkers);
+            
+            if (companies.length > maxMarkers) {
+                console.log(`Showing first ${maxMarkers} of ${companies.length} companies for performance`);
+            }
+            
+            companiesToShow.forEach((company, index) => {
                 const icon = createCustomIcon(company);
                 const marker = L.marker([company.latitude, company.longitude], { icon }).addTo(map);
                 
