@@ -249,35 +249,12 @@
             font-style: italic;
         }
         
-        .load-more-btn {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .load-more-btn:hover {
-            background: #2563eb;
-        }
-        
-        .load-more-btn:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-        }
     </style>
 </head>
 <body>
     <div class="app">
         <div class="header">
             <div class="loading-status" id="loading-status">Chargement...</div>
-            <button id="load-more-btn" class="load-more-btn" onclick="loadMoreCompanies()" style="display: none;">
-                📈 Charger plus
-            </button>
         </div>
         
         <div class="filters">
@@ -331,13 +308,6 @@
         let zrrMarkers = [];    // Persistent ZRR markers
         let essMarkers = [];    // ESS pagination markers
         
-        // Pagination variables
-        let currentSearchType = null;  // 'postal', 'city', 'activity'
-        let currentSearchTerm = null;
-        let currentOffset = 0;
-        let hasMoreData = false;
-        let isLoadingMore = false;
-        
         // Initialize map
         function initMap() {
             console.log('Initializing map...');
@@ -350,7 +320,7 @@
             
             console.log('Map initialized - centered on Lille');
             hideLoading();
-            loadLilleCompanies();
+            loadCompanies(); // Load all ESS companies at startup
             loadQPVCompanies(); // Load persistent QPV companies
             // ZRR companies will be loaded only when user checks the ZRR filter
         }
@@ -387,22 +357,16 @@
         
         // Load companies from API (for search/filter) - RESPECT CITY CONTEXT
         async function loadCompanies() {
-            console.log('Loading companies...');
-            showLoading('Chargement des entreprises...');
+            console.log('Loading all ESS companies...');
+            showLoading('Chargement de l\'écosystème ESS...');
             
             try {
                 const params = new URLSearchParams({
-                    commune: currentCity,  // Always respect current city context
-                    limit: 50000  // Load all clean ESS data at once
+                    limit: 50000  // Load all ESS data at once
                 });
                 
-                // Add filters only if they're active
-                if (activeFilters.qpv) {
-                    params.append('qpv', 'true');
-                }
-                if (activeFilters.zrr) {
-                    params.append('zrr', 'true');
-                }
+                // Don't add city filter - we want all ESS data
+                // Don't add QPV/ZRR filters - we'll handle them separately
                 
                 const response = await fetch(`${API_URL}/filter?${params}`);
                 console.log('API response status:', response.status);
@@ -421,18 +385,10 @@
                     !company.tags || !company.tags.includes('ZRR')
                 );
                 
-                // SMART FILTERING: Only show companies from current city
-                if (currentCity && currentCity !== 'LILLE') {
-                    companies = companies.filter(company => 
-                        company.libelle_commune && 
-                        company.libelle_commune.toUpperCase().startsWith(currentCity)
-                    );
-                }
-                
-                console.log('Companies loaded:', companies.length);
+                console.log('All ESS companies loaded:', companies.length);
                 
                 updateMap();
-                document.getElementById('loading-status').textContent = currentCity;
+                document.getElementById('loading-status').textContent = `Écosystème ESS complet (${companies.length.toLocaleString()} entreprises)`;
                 
             } catch (error) {
                 console.error('Error loading companies:', error);
@@ -442,20 +398,14 @@
             }
         }
         
-        // Search companies by city - IMPROVED PRECISION WITH PAGINATION
+        // Search companies by city - FILTER FROM LOADED DATA
         async function searchCompanies() {
             const searchTerm = document.getElementById('search-input').value;
             if (!searchTerm.trim()) {
-                // Don't go back to Lille, just reload current city
+                // Show all companies if search is cleared
                 loadCompanies();
                 return;
             }
-            
-            // Reset pagination for new search
-            currentSearchType = 'city';
-            currentSearchTerm = searchTerm.trim();
-            currentOffset = 0;
-            hasMoreData = false;
             
             // Update current city context
             currentCity = searchTerm.toUpperCase();
@@ -463,48 +413,29 @@
             showLoading(`Recherche: "${searchTerm}"...`);
             
             try {
-                // Use exact match for better precision with pagination
-                const params = new URLSearchParams({
-                    commune: searchTerm,
-                    limit: 2000,  // Batch size for pagination
-                    offset: currentOffset
-                });
-                
-                // Add current filters
-                if (activeFilters.qpv) {
-                    params.append('qpv', 'true');
-                }
-                if (activeFilters.zrr) {
-                    params.append('zrr', 'true');
-                }
-                
-                console.log('Searching city:', searchTerm, 'URL:', `${API_URL}/filter?${params}`);
-                
-                const response = await fetch(`${API_URL}/filter?${params}`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                console.log('City search result:', data);
-                
-                companies = data.companies || [];
-                
-                // FILTER OUT ZRR COMPANIES: Clean ESS data only
-                companies = companies.filter(company => 
-                    !company.tags || !company.tags.includes('ZRR')
+                // Filter from already loaded companies
+                const filteredCompanies = companies.filter(company => 
+                    company.libelle_commune && 
+                    company.libelle_commune.toUpperCase().includes(searchTerm.toUpperCase())
                 );
                 
-                hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
+                // Apply active filters
+                let finalCompanies = filteredCompanies;
+                if (activeFilters.qpv) {
+                    finalCompanies = finalCompanies.filter(company => 
+                        company.tags && company.tags.includes('QPV')
+                    );
+                }
+                
+                console.log(`Found ${finalCompanies.length} companies in ${searchTerm}`);
+                
+                // Update map with filtered results
+                companies = finalCompanies;
                 
                 // Show clean status
-                document.getElementById('loading-status').textContent = `${currentCity}`;
+                document.getElementById('loading-status').textContent = `${searchTerm} (${finalCompanies.length} entreprises)`;
                 
-                // Show/hide Load More button
-                updateLoadMoreButton();
-                
-                // Center map on the searched city first
+                // Center map on the searched city
                 centerMapOnCity(searchTerm);
                 
                 updateMap();
@@ -517,76 +448,42 @@
             }
         }
         
-        // Search companies by postal code (exact prefix matching)
+        // Search companies by postal code - FILTER FROM LOADED DATA
         async function searchByPostal() {
             const postalCode = document.getElementById('postal-input').value;
             if (!postalCode.trim()) {
-                // Don't go back to Lille, just reload current city
+                // Show all companies if search is cleared
                 loadCompanies();
                 return;
             }
             
-            // Reset pagination for new search
-            currentSearchType = 'postal';
-            currentSearchTerm = postalCode.trim();
-            currentOffset = 0;
-            hasMoreData = false;
-            
-            // Use the full postal code prefix for more precise matching
             const postalPrefix = postalCode.trim();
-            
             showLoading(`Code postal: "${postalPrefix}"...`);
             
             try {
-                const params = new URLSearchParams({
-                    code_postal: postalPrefix,
-                    limit: 2000,  // Batch size
-                    offset: currentOffset
-                });
-                
-                // Add current filters
-                if (activeFilters.qpv) {
-                    params.append('qpv', 'true');
-                }
-                if (activeFilters.zrr) {
-                    params.append('zrr', 'true');
-                }
-                
-                console.log('Searching postal code:', postalPrefix, 'URL:', `${API_URL}/filter?${params}`);
-                
-                // Add timeout to prevent hanging
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-                
-                const response = await fetch(`${API_URL}/filter?${params}`, {
-                    signal: controller.signal
-                });
-                
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                console.log('Postal code search result:', data);
-                
-                companies = data.companies || [];
-                
-                // FILTER OUT ZRR COMPANIES: Clean ESS data only
-                companies = companies.filter(company => 
-                    !company.tags || !company.tags.includes('ZRR')
+                // Filter from already loaded companies
+                const filteredCompanies = companies.filter(company => 
+                    company.code_postal && 
+                    company.code_postal.startsWith(postalPrefix)
                 );
                 
-                hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
+                // Apply active filters
+                let finalCompanies = filteredCompanies;
+                if (activeFilters.qpv) {
+                    finalCompanies = finalCompanies.filter(company => 
+                        company.tags && company.tags.includes('QPV')
+                    );
+                }
+                
+                console.log(`Found ${finalCompanies.length} companies with postal code ${postalPrefix}`);
+                
+                // Update map with filtered results
+                companies = finalCompanies;
                 
                 // Show clean status
-                document.getElementById('loading-status').textContent = `Code postal ${postalPrefix}`;
+                document.getElementById('loading-status').textContent = `Code postal ${postalPrefix} (${finalCompanies.length} entreprises)`;
                 
-                // Show/hide Load More button
-                updateLoadMoreButton();
-                
-                // Center map on postal code area (approximate center)
+                // Center map on postal code area
                 centerMapOnPostalCode(postalPrefix);
                 
                 updateMap();
@@ -599,11 +496,11 @@
             }
         }
         
-        // Search companies by activity code - RESPECT CITY CONTEXT
+        // Search companies by activity code - FILTER FROM LOADED DATA
         async function searchByActivity() {
             const activityCode = document.getElementById('activity-input').value;
             if (!activityCode.trim()) {
-                // Don't go back to Lille, just reload current city
+                // Show all companies if search is cleared
                 loadCompanies();
                 return;
             }
@@ -611,60 +508,27 @@
             showLoading(`Activité: "${activityCode}"...`);
             
             try {
-            // Reset pagination for new search
-            currentSearchType = 'activity';
-            currentSearchTerm = activityCode.trim();
-            currentOffset = 0;
-            hasMoreData = false;
-            
-            const params = new URLSearchParams({
-                activity_code: activityCode,
-                commune: currentCity,  // Respect current city
-                limit: 2000,  // Batch size for pagination
-                offset: currentOffset
-            });
-                
-                // Add current filters
-                if (activeFilters.qpv) {
-                    params.append('qpv', 'true');
-                }
-                if (activeFilters.zrr) {
-                    params.append('zrr', 'true');
-                }
-                
-                console.log('Searching activity:', activityCode, 'URL:', `${API_URL}/filter?${params}`);
-                
-                const response = await fetch(`${API_URL}/filter?${params}`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                console.log('Activity search result:', data);
-                
-                companies = data.companies || [];
-                
-                // FILTER OUT ZRR COMPANIES: Clean ESS data only
-                companies = companies.filter(company => 
-                    !company.tags || !company.tags.includes('ZRR')
+                // Filter from already loaded companies
+                const filteredCompanies = companies.filter(company => 
+                    company.activite_principale_unite_legale && 
+                    company.activite_principale_unite_legale.includes(activityCode)
                 );
                 
-                hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
-                
-                // SMART FILTERING: Only show companies from current city
-                if (currentCity && currentCity !== 'LILLE') {
-                    companies = companies.filter(company => 
-                        company.libelle_commune && 
-                        company.libelle_commune.toUpperCase().startsWith(currentCity)
+                // Apply active filters
+                let finalCompanies = filteredCompanies;
+                if (activeFilters.qpv) {
+                    finalCompanies = finalCompanies.filter(company => 
+                        company.tags && company.tags.includes('QPV')
                     );
                 }
                 
-                // Show clean status
-                document.getElementById('loading-status').textContent = `Activité ${activityCode} - ${currentCity}`;
+                console.log(`Found ${finalCompanies.length} companies with activity ${activityCode}`);
                 
-                // Show/hide Load More button
-                updateLoadMoreButton();
+                // Update map with filtered results
+                companies = finalCompanies;
+                
+                // Show clean status
+                document.getElementById('loading-status').textContent = `Activité ${activityCode} (${finalCompanies.length} entreprises)`;
                 
                 updateMap();
                 
@@ -673,109 +537,6 @@
                 document.getElementById('loading-status').textContent = `Erreur: ${error.message}`;
             } finally {
                 hideLoading();
-            }
-        }
-        
-        // Load more companies for current search
-        async function loadMoreCompanies() {
-            if (isLoadingMore || !hasMoreData || !currentSearchType) {
-                return;
-            }
-            
-            isLoadingMore = true;
-            currentOffset += 2000;
-            
-            const loadMoreBtn = document.getElementById('load-more-btn');
-            loadMoreBtn.disabled = true;
-            loadMoreBtn.textContent = '⏳ Chargement...';
-            
-            try {
-                let params;
-                
-                if (currentSearchType === 'postal') {
-                    params = new URLSearchParams({
-                        code_postal: currentSearchTerm,
-                        limit: 2000,
-                        offset: currentOffset
-                    });
-                } else if (currentSearchType === 'city') {
-                    params = new URLSearchParams({
-                        commune: currentSearchTerm,
-                        limit: 2000,
-                        offset: currentOffset
-                    });
-                } else if (currentSearchType === 'activity') {
-                    params = new URLSearchParams({
-                        activity_code: currentSearchTerm,
-                        commune: currentCity,
-                        limit: 2000,
-                        offset: currentOffset
-                    });
-                }
-                
-                // Add current filters
-                if (activeFilters.qpv) {
-                    params.append('qpv', 'true');
-                }
-                if (activeFilters.zrr) {
-                    params.append('zrr', 'true');
-                }
-                
-                console.log('Loading more companies:', params.toString());
-                
-                const response = await fetch(`${API_URL}/filter?${params}`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                const newCompanies = data.companies || [];
-                
-                // FILTER OUT ZRR COMPANIES: Clean ESS data only
-                const cleanCompanies = newCompanies.filter(company => 
-                    !company.tags || !company.tags.includes('ZRR')
-                );
-                
-                // REPLACE companies array with new batch (not append)
-                companies = cleanCompanies;
-                hasMoreData = cleanCompanies.length === 2000;
-                
-                // Update status with current batch count
-                const batchCount = companies.length;
-                const totalLoaded = currentOffset + batchCount;
-                document.getElementById('loading-status').textContent = 
-                    `${currentSearchType === 'postal' ? 'Code postal' : 
-                      currentSearchType === 'city' ? currentSearchTerm : 
-                      'Activité'} ${currentSearchTerm}`;
-                
-                // Clear existing markers and show new ones
-                clearMapMarkers();
-                updateMap();
-                
-                // Update Load More button
-                updateLoadMoreButton();
-                
-            } catch (error) {
-                console.error('Error loading more companies:', error);
-                document.getElementById('loading-status').textContent = `Erreur: ${error.message}`;
-            } finally {
-                isLoadingMore = false;
-                loadMoreBtn.disabled = false;
-                loadMoreBtn.textContent = '📈 Charger plus';
-            }
-        }
-        
-        // Update Load More button visibility and state
-        function updateLoadMoreButton() {
-            const loadMoreBtn = document.getElementById('load-more-btn');
-            
-            if (hasMoreData && currentSearchType) {
-                loadMoreBtn.style.display = 'block';
-                loadMoreBtn.textContent = '📈 Charger plus';
-                loadMoreBtn.disabled = isLoadingMore;
-            } else {
-                loadMoreBtn.style.display = 'none';
             }
         }
         
@@ -844,24 +605,13 @@
             activeFilters.qpv = false;
             activeFilters.zrr = false;
             
-            // Reset pagination
-            currentSearchType = null;
-            currentSearchTerm = null;
-            currentOffset = 0;
-            hasMoreData = false;
-            updateLoadMoreButton();
-            
             // Update button states
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
             
-            // Reload companies for current city without filters
-            if (currentCity === 'LILLE') {
-                loadLilleCompanies();
-            } else {
-                loadCompanies();
-            }
+            // Reload all companies without filters
+            loadCompanies();
         }
         
         // Center map on specific city coordinates with tight zoom
