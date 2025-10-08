@@ -393,7 +393,7 @@
             try {
                 const params = new URLSearchParams({
                     commune: currentCity,  // Always respect current city context
-                    limit: 50000
+                    limit: 50000  // Load all clean ESS data at once
                 });
                 
                 // Add filters only if they're active
@@ -415,6 +415,11 @@
                 console.log('API data:', data);
                 
                 companies = data.companies || [];
+                
+                // FILTER OUT ZRR COMPANIES: Clean ESS data only
+                companies = companies.filter(company => 
+                    !company.tags || !company.tags.includes('ZRR')
+                );
                 
                 // SMART FILTERING: Only show companies from current city
                 if (currentCity && currentCity !== 'LILLE') {
@@ -485,6 +490,12 @@
                 console.log('City search result:', data);
                 
                 companies = data.companies || [];
+                
+                // FILTER OUT ZRR COMPANIES: Clean ESS data only
+                companies = companies.filter(company => 
+                    !company.tags || !company.tags.includes('ZRR')
+                );
+                
                 hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
                 
                 // Show clean status
@@ -561,6 +572,12 @@
                 console.log('Postal code search result:', data);
                 
                 companies = data.companies || [];
+                
+                // FILTER OUT ZRR COMPANIES: Clean ESS data only
+                companies = companies.filter(company => 
+                    !company.tags || !company.tags.includes('ZRR')
+                );
+                
                 hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
                 
                 // Show clean status
@@ -627,6 +644,12 @@
                 console.log('Activity search result:', data);
                 
                 companies = data.companies || [];
+                
+                // FILTER OUT ZRR COMPANIES: Clean ESS data only
+                companies = companies.filter(company => 
+                    !company.tags || !company.tags.includes('ZRR')
+                );
+                
                 hasMoreData = companies.length === 2000; // If we got a full batch, there might be more
                 
                 // SMART FILTERING: Only show companies from current city
@@ -709,9 +732,14 @@
                 const data = await response.json();
                 const newCompanies = data.companies || [];
                 
+                // FILTER OUT ZRR COMPANIES: Clean ESS data only
+                const cleanCompanies = newCompanies.filter(company => 
+                    !company.tags || !company.tags.includes('ZRR')
+                );
+                
                 // REPLACE companies array with new batch (not append)
-                companies = newCompanies;
-                hasMoreData = newCompanies.length === 2000;
+                companies = cleanCompanies;
+                hasMoreData = cleanCompanies.length === 2000;
                 
                 // Update status with current batch count
                 const batchCount = companies.length;
