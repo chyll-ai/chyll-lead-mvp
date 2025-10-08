@@ -900,15 +900,10 @@
             // Clear existing markers
             clearMapMarkers();
             
-            // Add markers (limit for performance)
-            const maxMarkers = 1000;
-            const companiesToShow = companies.slice(0, maxMarkers);
+            // Add all markers (no limit - show complete ESS ecosystem)
+            console.log(`Showing all ${companies.length} companies`);
             
-            if (companies.length > maxMarkers) {
-                console.log(`Showing first ${maxMarkers} of ${companies.length} companies for performance`);
-            }
-            
-            companiesToShow.forEach((company, index) => {
+            companies.forEach((company, index) => {
                 const icon = createCustomIcon(company);
                 const marker = L.marker([company.latitude, company.longitude], { icon }).addTo(map);
                 
